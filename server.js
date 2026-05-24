@@ -4,10 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const dgram = require('dgram');
-const localtunnel = require('localtunnel');
+const { spawn } = require('child_process');
 
 const PORT = process.env.PORT || 3456;
-const TUNNEL_SUBDOMAIN = process.env.TUNNEL_SUBDOMAIN || 'miyu-' + require('crypto').createHash('md5').update(os.hostname() + '-miyu').digest('hex').slice(0, 10);
+const TUNNEL_SUBDOMAIN = process.env.TUNNEL_SUBDOMAIN || 'miyu-' + require('crypto').createHash('sha256').update(os.hostname()).digest('hex').slice(0, 8);
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'posts.json');
 const isCloud = !!process.env.RAILWAY_ENVIRONMENT || !!process.env.RENDER || !!process.env.KOYEB;
@@ -548,72 +548,67 @@ const server = http.createServer(async (req, res) => {
   sendJSON(res, 404, { error: 'not found' });
 });
 
-// ===== Public Tunnel (localtunnel with heartbeat) =====
+// ===== Public Tunnel (localtunnel via child_process) =====
 let tunnelPublicUrl = null;
-let tunnelInstance = null;
-let tunnelHeartbeatTimer = null;
-let tunnelRetries = 0;
-const MAX_TUNNEL_RETRIES = 999;
+let tunnelProcess = null;
+let tunnelRestartTimer = null;
 
-async function checkTunnelHealth(url) {
-  try {
-    const mod = url.startsWith('https') ? https : http;
-    await new Promise((resolve, reject) => {
-      const req = mod.get(url + '/health', { timeout: 8000 }, (res) => {
-        res.on('data', () => {});
-        res.on('end', resolve);
-      });
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-    });
-    return true;
-  } catch { return false; }
-}
-
-function startTunnelHeartbeat(url) {
-  if (tunnelHeartbeatTimer) clearInterval(tunnelHeartbeatTimer);
-  tunnelHeartbeatTimer = setInterval(async () => {
-    const alive = await checkTunnelHealth(url);
-    if (!alive && tunnelPublicUrl === url) {
-      console.log('  ⚠️  隧道连接断开，正在重连...');
-      tunnelPublicUrl = null;
-      if (tunnelInstance) {
-        try { tunnelInstance.close(); } catch {}
-        tunnelInstance = null;
-      }
-      startTunnel();
-    }
-  }, 30000);
-}
-
-async function startTunnel() {
-  if (tunnelRetries >= MAX_TUNNEL_RETRIES) return;
-  try {
-    const tunnel = await localtunnel({ port: PORT, subdomain: TUNNEL_SUBDOMAIN });
-    tunnelInstance = tunnel;
-    tunnelPublicUrl = tunnel.url;
-    tunnelRetries = 0;
-    startTunnelHeartbeat(tunnel.url);
-
-    tunnel.on('close', () => {
-      if (tunnelInstance === tunnel) tunnelInstance = null;
-      if (tunnelPublicUrl === tunnel.url) {
-        tunnelPublicUrl = null;
-        startTunnel();
-      }
-    });
-
-    tunnel.on('error', () => {
-      if (tunnelInstance === tunnel) tunnelInstance = null;
-      if (tunnelPublicUrl === tunnel.url) {
-        tunnelPublicUrl = null;
-        setTimeout(startTunnel, 5000);
-      }
-    });
-  } catch {
-    tunnelRetries++;
-    setTimeout(startTunnel, 10000);
+function startTunnel() {
+  if (tunnelProcess) {
+    try { tunnelProcess.kill(); } catch {}
+    tunnelProcess = null;
   }
+
+  const url = `https://${TUNNEL_SUBDOMAIN}.loca.lt`;
+  console.log('  🔗 正在建立公网隧道...');
+
+  const ltScript = path.join(__dirname, 'node_modules', 'localtunnel', 'bin', 'lt.js');
+  const proc = spawn(process.execPath, [ltScript, '--port', String(PORT), '--subdomain', TUNNEL_SUBDOMAIN], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0' },
+  });
+
+  tunnelProcess = proc;
+
+  proc.stdout.on('data', (data) => {
+    const text = data.toString();
+    const match = text.match(/https:\/\/[^\s]+\.loca\.lt/);
+    if (match) {
+      tunnelPublicUrl = match[0];
+      console.log('  ✅ 公网隧道已建立');
+    }
+  });
+
+  proc.stderr.on('data', () => {}); // suppress stderr
+
+  proc.on('close', (code) => {
+    if (tunnelProcess === proc) tunnelProcess = null;
+    if (code !== 0 && tunnelPublicUrl === url) tunnelPublicUrl = null;
+    // Auto-restart after delay
+    if (!tunnelRestartTimer) {
+      tunnelRestartTimer = setTimeout(() => {
+        tunnelRestartTimer = null;
+        startTunnel();
+      }, 10000);
+    }
+  });
+
+  proc.on('error', () => {
+    if (tunnelProcess === proc) tunnelProcess = null;
+    if (!tunnelRestartTimer) {
+      tunnelRestartTimer = setTimeout(() => {
+        tunnelRestartTimer = null;
+        startTunnel();
+      }, 10000);
+    }
+  });
+
+  // Set URL immediately (it will be corrected if server assigns different)
+  tunnelPublicUrl = url;
+}
+
+function getTunnelUrl() {
+  return tunnelPublicUrl;
 }
 
 // ===== Startup =====
@@ -658,7 +653,7 @@ async function start() {
     if (upnpMapped && externalIP) console.log(`  🌐 UPnP 公网：http://${externalIP}:${PORT}`);
     console.log('');
     console.log('  📁 数据目录：' + DATA_DIR);
-    console.log('  🔄 实时同步：SSE  |  🩺 隧道心跳：每 30s');
+    console.log('  🔄 实时同步：SSE  |  🔁 隧道自动重连');
     console.log('');
   });
 }
