@@ -4,8 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const dgram = require('dgram');
+const localtunnel = require('localtunnel');
 
 const PORT = process.env.PORT || 3456;
+const TUNNEL_SUBDOMAIN = process.env.TUNNEL_SUBDOMAIN || 'miyu-' + require('crypto').createHash('md5').update(os.hostname() + '-miyu').digest('hex').slice(0, 10);
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'posts.json');
 const isCloud = !!process.env.RAILWAY_ENVIRONMENT || !!process.env.RENDER || !!process.env.KOYEB;
@@ -441,6 +443,40 @@ const server = http.createServer(async (req, res) => {
   sendJSON(res, 404, { error: 'not found' });
 });
 
+// ===== Localtunnel =====
+let tunnelPublicUrl = null;
+let tunnelRetries = 0;
+const MAX_TUNNEL_RETRIES = 99;
+
+async function startTunnel() {
+  try {
+    const tunnel = await localtunnel({ port: PORT, subdomain: TUNNEL_SUBDOMAIN });
+    tunnelPublicUrl = tunnel.url;
+    tunnelRetries = 0;
+
+    tunnel.on('close', () => {
+      if (tunnelPublicUrl === tunnel.url) tunnelPublicUrl = null;
+      if (tunnelRetries < MAX_TUNNEL_RETRIES) {
+        tunnelRetries++;
+        setTimeout(startTunnel, 5000);
+      }
+    });
+
+    tunnel.on('error', () => {
+      if (tunnelPublicUrl === tunnel.url) tunnelPublicUrl = null;
+      if (tunnelRetries < MAX_TUNNEL_RETRIES) {
+        tunnelRetries++;
+        setTimeout(startTunnel, 10000);
+      }
+    });
+  } catch {
+    if (tunnelRetries < MAX_TUNNEL_RETRIES) {
+      tunnelRetries++;
+      setTimeout(startTunnel, 10000);
+    }
+  }
+}
+
 // ===== Startup =====
 async function start() {
   const localIPs = getLocalIPs();
@@ -462,8 +498,15 @@ async function start() {
     upnpMapped = true;
   }
 
+  // Start public tunnel for cross-WiFi access (no cloud needed)
+  if (!isCloud) {
+    startTunnel();
+    // Wait a bit for tunnel to establish
+    await new Promise(r => setTimeout(r, 4000));
+  }
+
   server.listen(PORT, '0.0.0.0', () => {
-    const boxWidth = isCloud ? 48 : 48;
+    const boxWidth = 52;
     console.log('');
     console.log('  ╔' + '═'.repeat(boxWidth) + '╗');
     console.log('  ║' + ' '.repeat(Math.floor((boxWidth - 22) / 2)) + '🐱  咪语留言板 已启动  🐱' + ' '.repeat(Math.ceil((boxWidth - 22) / 2)) + '║');
@@ -472,56 +515,38 @@ async function start() {
 
     if (isCloud) {
       console.log('  ☁️  云平台模式 — 已自动配置公网访问');
-      console.log('');
-      console.log('  🔗 你的固定公网地址：');
       const railUrl = process.env.RAILWAY_PUBLIC_DOMAIN;
       const renderUrl = process.env.RENDER_EXTERNAL_URL;
-      if (railUrl) console.log(`     https://${railUrl}`);
-      else if (renderUrl) console.log(`     ${renderUrl}`);
-      else console.log(`     (由云平台自动分配)`);
+      if (railUrl) console.log(`  🔗 https://${railUrl}`);
+      else if (renderUrl) console.log(`  🔗 ${renderUrl}`);
+      else console.log('  🔗 (由云平台自动分配)');
+    }
+
+    if (tunnelPublicUrl) {
+      console.log('  🌍 ===== 公网固定地址（任何 WiFi 都能访问）=====');
       console.log('');
-      console.log('  ✅ 任何网络下的设备都可以通过上方地址访问！');
-    } else {
-      console.log('  📡 局域网内其他设备可通过以下地址访问：');
+      console.log(`     ${tunnelPublicUrl}`);
       console.log('');
+      console.log('  ⚡ 此地址永久固定，只要本机保持运行就不会变');
+      console.log('  📱 手机 / 平板 / 其他电脑 均可通过上方地址访问');
+      console.log('');
+    }
+
+    if (!isCloud) {
+      console.log('  📡 局域网地址：');
       for (const { name, ip } of localIPs) {
-        console.log(`     http://${ip}:${PORT}  ← ${name}`);
+        console.log(`     http://${ip}:${PORT}  (${name})`);
       }
-      console.log('');
+      console.log('  💻 本机访问：http://localhost:' + PORT);
 
       if (upnpMapped && externalIP) {
-        console.log('  🌐 UPnP 端口映射成功！外部网络可访问：');
-        console.log('');
-        console.log(`     http://${externalIP}:${PORT}  (公网 IP)`);
-        console.log('');
-        console.log('  ⚠️  这是你家庭宽带的公网 IP，重启路由器后 IP 可能会变');
+        console.log(`  🌐 UPnP 公网：http://${externalIP}:${PORT}`);
       }
-
-      console.log('  💻 本机访问：http://localhost:' + PORT);
-      console.log('  📁 数据目录：' + DATA_DIR);
-      console.log('  🔄 实时同步：SSE');
     }
 
     console.log('');
-    if (!isCloud && !upnpMapped) {
-      console.log('  ────────────────────────────────────────────────');
-      console.log('  🌍 跨不同 WiFi 使用（固定公网地址）：');
-      console.log('');
-      console.log('  方式1: 部署到 Railway（免费，推荐）');
-      console.log('    ① 把项目上传到 GitHub');
-      console.log('    ② 在 railway.app 导入仓库，一键部署');
-      console.log('    ③ 获得固定域名：xxx.up.railway.app');
-      console.log('');
-      console.log('  方式2: 部署到 Render（免费）');
-      console.log('    ① 把项目上传到 GitHub');
-      console.log('    ② 在 render.com 新建 Web Service');
-      console.log('    ③ 获得固定域名：xxx.onrender.com');
-      console.log('');
-      console.log('  方式3: 本机公网 IP（已尝试 UPnP 自动映射）');
-      console.log('    如果没有显示公网地址，说明路由器不支持 UPnP');
-      console.log('    可手动在路由器设置端口转发：' + PORT);
-      console.log('  ────────────────────────────────────────────────');
-    }
+    console.log('  📁 数据目录：' + DATA_DIR);
+    console.log('  🔄 实时同步：SSE');
     console.log('');
   });
 }
@@ -533,7 +558,6 @@ process.on('SIGINT', async () => {
     const ips = getLocalIPs();
     if (ips.length > 0) {
       await upnpRemovePortMapping(ips[0].ip, PORT);
-      console.log('  ✓ UPnP 端口映射已清除');
     }
   }
   process.exit(0);
