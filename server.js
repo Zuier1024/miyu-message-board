@@ -548,7 +548,7 @@ const server = http.createServer(async (req, res) => {
   sendJSON(res, 404, { error: 'not found' });
 });
 
-// ===== Public Tunnel (localtunnel via child_process) =====
+// ===== Public Tunnel (Cloudflare Tunnel via cloudflared) =====
 let tunnelPublicUrl = null;
 let tunnelProcess = null;
 let tunnelRestartTimer = null;
@@ -559,37 +559,43 @@ function startTunnel() {
     tunnelProcess = null;
   }
 
-  const url = `https://${TUNNEL_SUBDOMAIN}.loca.lt`;
-  console.log('  🔗 正在建立公网隧道...');
+  console.log('  🔗 正在建立 Cloudflare 隧道...');
 
-  const ltScript = path.join(__dirname, 'node_modules', 'localtunnel', 'bin', 'lt.js');
-  const proc = spawn(process.execPath, [ltScript, '--port', String(PORT), '--subdomain', TUNNEL_SUBDOMAIN], {
+  const cfPath = path.join(__dirname, 'cloudflared.exe');
+  const proc = spawn(cfPath, [
+    'tunnel', '--url', `http://localhost:${PORT}`,
+    '--no-autoupdate'
+  ], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0' },
   });
 
   tunnelProcess = proc;
 
-  proc.stdout.on('data', (data) => {
-    const text = data.toString();
-    const match = text.match(/https:\/\/[^\s]+\.loca\.lt/);
+  let urlFound = false;
+
+  const parseUrl = (text) => {
+    if (urlFound) return;
+    const match = text.match(/https:\/\/[^\s]+\.trycloudflare\.com/);
     if (match) {
+      urlFound = true;
       tunnelPublicUrl = match[0];
-      console.log('  ✅ 公网隧道已建立');
+      console.log('  ✅ Cloudflare 隧道已建立');
+      console.log('  🌍 公网地址：' + match[0]);
+      console.log('');
+      updateGitHubRedirect(match[0]);
     }
-  });
+  };
 
-  proc.stderr.on('data', () => {}); // suppress stderr
+  proc.stdout.on('data', (data) => { parseUrl(data.toString()); });
+  proc.stderr.on('data', (data) => { parseUrl(data.toString()); });
 
-  proc.on('close', (code) => {
+  proc.on('close', () => {
     if (tunnelProcess === proc) tunnelProcess = null;
-    if (code !== 0 && tunnelPublicUrl === url) tunnelPublicUrl = null;
-    // Auto-restart after delay
     if (!tunnelRestartTimer) {
       tunnelRestartTimer = setTimeout(() => {
         tunnelRestartTimer = null;
         startTunnel();
-      }, 10000);
+      }, 5000);
     }
   });
 
@@ -599,16 +605,39 @@ function startTunnel() {
       tunnelRestartTimer = setTimeout(() => {
         tunnelRestartTimer = null;
         startTunnel();
-      }, 10000);
+      }, 5000);
     }
   });
-
-  // Set URL immediately (it will be corrected if server assigns different)
-  tunnelPublicUrl = url;
 }
 
 function getTunnelUrl() {
   return tunnelPublicUrl;
+}
+
+// Update GitHub Pages redirect when tunnel URL changes
+function updateGitHubRedirect(newUrl) {
+  const content = Buffer.from('const TUNNEL_URL = "' + newUrl + '";\n').toString('base64');
+
+  // Get current file SHA
+  const getSha = spawn('gh', [
+    'api', 'repos/Zuier1024/miyu-message-board/contents/docs/redirect.js',
+    '--jq', '.sha'
+  ]);
+  let sha = '';
+  getSha.stdout.on('data', d => sha += d.toString());
+  getSha.on('close', () => {
+    sha = sha.trim();
+    if (!sha) return;
+    const args = [
+      'api', 'repos/Zuier1024/miyu-message-board/contents/docs/redirect.js',
+      '-X', 'PUT',
+      '-f', 'message=Update tunnel URL',
+      '-f', 'content=' + content,
+      '-f', 'sha=' + sha
+    ];
+    spawn('gh', args, { stdio: 'ignore' });
+  });
+  getSha.stderr.on('data', () => {});
 }
 
 // ===== Startup =====
@@ -625,10 +654,10 @@ async function start() {
 
   if (isCloud) upnpMapped = true;
 
-  // Start tunnel for cross-WiFi
+  // Start Cloudflare Tunnel for cross-WiFi
   if (!isCloud) {
     startTunnel();
-    await new Promise(r => setTimeout(r, 4000));
+    await new Promise(r => setTimeout(r, 3000));
   }
 
   server.listen(PORT, '0.0.0.0', () => {
@@ -653,7 +682,7 @@ async function start() {
     if (upnpMapped && externalIP) console.log(`  🌐 UPnP 公网：http://${externalIP}:${PORT}`);
     console.log('');
     console.log('  📁 数据目录：' + DATA_DIR);
-    console.log('  🔄 实时同步：SSE  |  🔁 隧道自动重连');
+    console.log('  🔄 实时同步：SSE  |  ☁️  Cloudflare 隧道自动重连');
     console.log('');
   });
 }

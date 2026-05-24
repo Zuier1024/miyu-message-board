@@ -4,3 +4,4 @@ data/
 *.tmp
 .DS_Store
 *.log
+cloudflared.exe
