@@ -1100,7 +1100,7 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 async function apiFetch(path, options = {}) {
   try {
     const res = await fetch(API_BASE + path, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json' },
       ...options,
     });
@@ -1114,7 +1114,7 @@ async function apiFetch(path, options = {}) {
 // ===== Unified Data API =====
 async function fetchPosts(search = '') {
   const data = await apiFetch('/posts' + (search ? '?search=' + encodeURIComponent(search) : ''));
-  if (data) {
+  if (Array.isArray(data)) {
     // Cache server data locally for offline fallback
     saveLocalPosts(data);
     return data;
@@ -1126,7 +1126,7 @@ async function fetchPosts(search = '') {
 
 async function fetchMyPosts() {
   const data = await apiFetch('/posts/mine?userId=' + encodeURIComponent(currentUser));
-  if (data) return data;
+  if (data && data.created) return data;
   const all = getLocalPosts();
   return {
     created: all.filter(p => p.authorId === currentUser),
