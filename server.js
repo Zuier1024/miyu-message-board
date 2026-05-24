@@ -443,37 +443,71 @@ const server = http.createServer(async (req, res) => {
   sendJSON(res, 404, { error: 'not found' });
 });
 
-// ===== Localtunnel =====
+// ===== Public Tunnel (localtunnel with heartbeat) =====
 let tunnelPublicUrl = null;
+let tunnelInstance = null;
+let tunnelHeartbeatTimer = null;
 let tunnelRetries = 0;
-const MAX_TUNNEL_RETRIES = 99;
+const MAX_TUNNEL_RETRIES = 999;
+
+async function checkTunnelHealth(url) {
+  try {
+    const mod = url.startsWith('https') ? https : http;
+    await new Promise((resolve, reject) => {
+      const req = mod.get(url + '/health', { timeout: 8000 }, (res) => {
+        res.on('data', () => {});
+        res.on('end', resolve);
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+    return true;
+  } catch { return false; }
+}
+
+function startTunnelHeartbeat(url) {
+  if (tunnelHeartbeatTimer) clearInterval(tunnelHeartbeatTimer);
+  tunnelHeartbeatTimer = setInterval(async () => {
+    const alive = await checkTunnelHealth(url);
+    if (!alive && tunnelPublicUrl === url) {
+      console.log('  ⚠️  隧道连接断开，正在重连...');
+      tunnelPublicUrl = null;
+      if (tunnelInstance) {
+        try { tunnelInstance.close(); } catch {}
+        tunnelInstance = null;
+      }
+      startTunnel();
+    }
+  }, 30000);
+}
 
 async function startTunnel() {
+  if (tunnelRetries >= MAX_TUNNEL_RETRIES) return;
   try {
     const tunnel = await localtunnel({ port: PORT, subdomain: TUNNEL_SUBDOMAIN });
+    tunnelInstance = tunnel;
     tunnelPublicUrl = tunnel.url;
     tunnelRetries = 0;
+    startTunnelHeartbeat(tunnel.url);
 
     tunnel.on('close', () => {
-      if (tunnelPublicUrl === tunnel.url) tunnelPublicUrl = null;
-      if (tunnelRetries < MAX_TUNNEL_RETRIES) {
-        tunnelRetries++;
-        setTimeout(startTunnel, 5000);
+      if (tunnelInstance === tunnel) tunnelInstance = null;
+      if (tunnelPublicUrl === tunnel.url) {
+        tunnelPublicUrl = null;
+        startTunnel();
       }
     });
 
     tunnel.on('error', () => {
-      if (tunnelPublicUrl === tunnel.url) tunnelPublicUrl = null;
-      if (tunnelRetries < MAX_TUNNEL_RETRIES) {
-        tunnelRetries++;
-        setTimeout(startTunnel, 10000);
+      if (tunnelInstance === tunnel) tunnelInstance = null;
+      if (tunnelPublicUrl === tunnel.url) {
+        tunnelPublicUrl = null;
+        setTimeout(startTunnel, 5000);
       }
     });
   } catch {
-    if (tunnelRetries < MAX_TUNNEL_RETRIES) {
-      tunnelRetries++;
-      setTimeout(startTunnel, 10000);
-    }
+    tunnelRetries++;
+    setTimeout(startTunnel, 10000);
   }
 }
 
@@ -481,27 +515,19 @@ async function startTunnel() {
 async function start() {
   const localIPs = getLocalIPs();
 
-  // Try UPnP port mapping for cross-network access
+  // Try UPnP port mapping
   if (!isCloud && localIPs.length > 0) {
     try {
-      const primaryIP = localIPs[0].ip;
-      const result = await upnpAddPortMapping(primaryIP, PORT, PORT, 'MiyuMessageBoard');
-      if (result.success) {
-        upnpMapped = true;
-        externalIP = result.externalIP;
-      }
-    } catch { /* UPnP not available */ }
+      const result = await upnpAddPortMapping(localIPs[0].ip, PORT, PORT, 'MiyuMessageBoard');
+      if (result.success) { upnpMapped = true; externalIP = result.externalIP; }
+    } catch {}
   }
 
-  // On cloud platforms, external access is handled by the platform
-  if (isCloud) {
-    upnpMapped = true;
-  }
+  if (isCloud) upnpMapped = true;
 
-  // Start public tunnel for cross-WiFi access (no cloud needed)
+  // Start tunnel for cross-WiFi
   if (!isCloud) {
     startTunnel();
-    // Wait a bit for tunnel to establish
     await new Promise(r => setTimeout(r, 4000));
   }
 
@@ -513,40 +539,21 @@ async function start() {
     console.log('  ╚' + '═'.repeat(boxWidth) + '╝');
     console.log('');
 
-    if (isCloud) {
-      console.log('  ☁️  云平台模式 — 已自动配置公网访问');
-      const railUrl = process.env.RAILWAY_PUBLIC_DOMAIN;
-      const renderUrl = process.env.RENDER_EXTERNAL_URL;
-      if (railUrl) console.log(`  🔗 https://${railUrl}`);
-      else if (renderUrl) console.log(`  🔗 ${renderUrl}`);
-      else console.log('  🔗 (由云平台自动分配)');
-    }
-
     if (tunnelPublicUrl) {
-      console.log('  🌍 ===== 公网固定地址（任何 WiFi 都能访问）=====');
-      console.log('');
-      console.log(`     ${tunnelPublicUrl}`);
-      console.log('');
-      console.log('  ⚡ 此地址永久固定，只要本机保持运行就不会变');
-      console.log('  📱 手机 / 平板 / 其他电脑 均可通过上方地址访问');
+      console.log('  🌍  公网固定地址（任何 WiFi 都能访问）：');
+      console.log(`       ${tunnelPublicUrl}`);
       console.log('');
     }
 
-    if (!isCloud) {
-      console.log('  📡 局域网地址：');
-      for (const { name, ip } of localIPs) {
-        console.log(`     http://${ip}:${PORT}  (${name})`);
-      }
-      console.log('  💻 本机访问：http://localhost:' + PORT);
-
-      if (upnpMapped && externalIP) {
-        console.log(`  🌐 UPnP 公网：http://${externalIP}:${PORT}`);
-      }
+    console.log('  📡 局域网地址：');
+    for (const { name, ip } of localIPs) {
+      console.log(`     http://${ip}:${PORT}  (${name})`);
     }
-
+    console.log('  💻 本机访问：http://localhost:' + PORT);
+    if (upnpMapped && externalIP) console.log(`  🌐 UPnP 公网：http://${externalIP}:${PORT}`);
     console.log('');
     console.log('  📁 数据目录：' + DATA_DIR);
-    console.log('  🔄 实时同步：SSE');
+    console.log('  🔄 实时同步：SSE  |  🩺 隧道心跳：每 30s');
     console.log('');
   });
 }
