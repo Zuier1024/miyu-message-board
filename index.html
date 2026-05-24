@@ -974,6 +974,10 @@ body::before {
         <span class="progress-text" id="videoProgressText">上传中...</span>
       </div>
     </div>
+    <div class="form-group">
+      <label>🐱 昵称（可选，留空则随机）</label>
+      <input type="text" id="postNickname" placeholder="给自己起个昵称吧~" maxlength="12" style="width:100%;padding:12px 14px;border:2px solid #f1d4da;border-radius:12px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
+    </div>
     <button class="submit-btn" onclick="createPost()">🐱 发布留言</button>
   </div>
 
@@ -1253,12 +1257,8 @@ let userName = getUserName();
 
 function formatTime(ts) {
   const d = new Date(ts);
-  const diff = Date.now() - d;
-  if (diff < 60000) return '刚刚';
-  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
-  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
-  if (diff < 604800000) return Math.floor(diff / 86400000) + '天前';
-  return d.toLocaleDateString('zh-CN');
+  const pad = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -1595,15 +1595,18 @@ async function createPost() {
       videoUrl = await uploadFile(selectedVideoFile, 'videoProgressFill', 'videoProgressText', 'videoProgress');
     }
 
+    const nickname = document.getElementById('postNickname').value.trim();
+    const displayName = nickname || (['小奶猫','棉花糖','樱花团子','草莓泡芙','蜜桃酱','奶油喵','布丁猫','糖霜爪','云朵喵','铃铛猫','糯米团','芝士猫','泡芙喵','奶盖茶','夹心喵','小布丁','草莓喵','桃花酥','小松饼','雪媚娘'])[Math.floor(Math.random() * 20)];
     const postData = {
       text, imageUrl, videoUrl,
-      authorId: getCurrentUserId(), authorName: getCurrentUserName(), authorAvatar: randomAvatar(),
+      authorId: getCurrentUserId(), authorName: displayName, authorAvatar: randomAvatar(),
     };
 
     await doCreatePost(postData);
 
     // Reset form
     textEl.value = '';
+    document.getElementById('postNickname').value = '';
     selectedImageFile = null;
     selectedVideoFile = null;
     document.getElementById('postImageFile').value = '';
