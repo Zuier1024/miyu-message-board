@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>咪语 - 匿名留言板</title>
+<style>
+/* ===== Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --pink-50: #fff0f3;
+  --pink-100: #ffe4ec;
+  --pink-200: #ffc2d9;
+  --pink-300: #ff9ec2;
+  --pink-400: #f8a4c8;
+  --pink-500: #f472b6;
+  --pink-600: #e7549b;
+  --pink-700: #d43d7e;
+  --text: #5c3d4a;
+  --text-light: #8e6e7a;
+  --white: #ffffff;
+  --shadow: 0 4px 20px rgba(244, 114, 182, 0.12);
+  --shadow-lg: 0 8px 40px rgba(244, 114, 182, 0.18);
+  --radius: 24px;
+  --radius-sm: 14px;
+  --radius-xs: 10px;
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+  background: linear-gradient(180deg, #fff0f3 0%, #ffe4ec 30%, #fff0f3 60%, #ffc2d9 100%);
+  background-attachment: fixed;
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ===== Paw Background ===== */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.05;
+  background:
+    radial-gradient(circle at 15% 10%, #f472b6 0%, transparent 70px) no-repeat,
+    radial-gradient(circle at 10% 85%, #f8a4c8 0%, transparent 50px) no-repeat,
+    radial-gradient(circle at 85% 15%, #ff9ec2 0%, transparent 60px) no-repeat,
+    radial-gradient(circle at 90% 75%, #f472b6 0%, transparent 45px) no-repeat,
+    radial-gradient(circle at 30% 50%, #f8a4c8 0%, transparent 75px) no-repeat,
+    radial-gradient(circle at 70% 40%, #f472b6 0%, transparent 55px) no-repeat,
+    radial-gradient(circle at 50% 90%, #ff9ec2 0%, transparent 65px) no-repeat;
+}
+
+/* ===== Layout ===== */
+.app-container {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 20px 16px 80px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ===== Header ===== */
+.header {
+  text-align: center;
+  padding: 30px 0 12px;
+  position: relative;
+}
+.header-logo {
+  font-size: 52px;
+  display: inline-block;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 4px 8px rgba(244,114,182,0.35));
+  animation: bounce 2s ease-in-out infinite;
+  cursor: default;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.header h1 {
+  font-size: 28px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--pink-600) 0%, var(--pink-400) 50%, var(--pink-600) 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 3px;
+  animation: shimmer 3s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.header p {
+  color: var(--text-light);
+  font-size: 13px;
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+/* ===== Connection Status ===== */
+.conn-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 50px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  margin-top: 6px;
+  transition: all var(--transition);
+}
+.conn-status.offline {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+.conn-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ===== Tab Navigation ===== */
+.tab-bar {
+  display: flex;
+  background: var(--white);
+  border-radius: 50px;
+  padding: 5px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+  border: 2px solid var(--pink-100);
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+}
+.tab-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-light);
+  transition: all var(--transition);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
+}
+.tab-btn.active {
+  background: linear-gradient(135deg, var(--pink-500) 0%, var(--pink-400) 100%);
+  color: #fff;
+  box-shadow: 0 3px 16px rgba(244, 114, 182, 0.35);
+}
+.tab-btn:hover:not(.active) {
+  color: var(--pink-600);
+  background: var(--pink-50);
+}
+
+/* ===== Sub Tabs ===== */
+.subtab-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.subtab-bar::-webkit-scrollbar { display: none; }
+.subtab-btn {
+  padding: 9px 20px;
+  border: 2px solid var(--pink-100);
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--white);
+  color: var(--text);
+  white-space: nowrap;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+.subtab-btn.active {
+  background: var(--pink-50);
+  border-color: var(--pink-400);
+  color: var(--pink-600);
+}
+.subtab-btn:hover { border-color: var(--pink-300); }
+.subtab-btn .badge {
+  display: inline-block;
+  background: var(--pink-400);
+  color: #fff;
+  border-radius: 50px;
+  padding: 1px 8px;
+  font-size: 11px;
+  margin-left: 5px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+.subtab-btn.active .badge { background: var(--pink-600); }
+
+/* ===== Search Bar ===== */
+.search-wrap {
+  margin-bottom: 16px;
+  position: relative;
+}
+.search-wrap input {
+  width: 100%;
+  padding: 15px 20px 15px 50px;
+  border: 2px solid var(--pink-100);
+  border-radius: 50px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text);
+  outline: none;
+  box-shadow: var(--shadow);
+  transition: all var(--transition);
+}
+.search-wrap input:focus {
+  border-color: var(--pink-400);
+  box-shadow: 0 0 0 5px rgba(248, 164, 200, 0.12);
+}
+.search-wrap .search-icon {
+  position: absolute;
+  left: 19px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  pointer-events: none;
+  opacity: 0.6;
+}
+.search-wrap .search-clear {
+  position: absolute;
+  right: 14px; top: 50%;
+  transform: translateY(-50%);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: var(--pink-100);
+  color: var(--pink-600);
+  cursor: pointer;
+  font-size: 14px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+.search-wrap .search-clear:hover { background: var(--pink-200); }
+.search-wrap .search-clear.visible { display: flex; }
+
+/* ===== Post Form ===== */
+.post-form-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+  border: 2px solid var(--pink-100);
+  position: relative;
+  overflow: hidden;
+  transition: all var(--transition);
+}
+.post-form-card::after {
+  content: '🐾';
+  position: absolute;
+  bottom: -10px; right: 16px;
+  font-size: 48px;
+  opacity: 0.08;
+  transform: rotate(-15deg);
+  pointer-events: none;
+}
+.form-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--pink-600);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.form-group { margin-bottom: 12px; }
+.form-group label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.form-group textarea,
+.form-group input {
+  width: 100%;
+  padding: 13px 16px;
+  border: 2px solid var(--pink-100);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--pink-50);
+  color: var(--text);
+  resize: vertical;
+  transition: all var(--transition);
+  outline: none;
+}
+.form-group textarea:focus,
+.form-group input:focus {
+  border-color: var(--pink-400);
+  box-shadow: 0 0 0 5px rgba(248, 164, 200, 0.15);
+  background: #fff;
+}
+.form-group textarea { min-height: 96px; }
+.submit-btn {
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--pink-500) 0%, var(--pink-400) 100%);
+  color: #fff;
+  letter-spacing: 1px;
+  transition: all var(--transition);
+  box-shadow: 0 4px 20px rgba(244, 114, 182, 0.3);
+  font-family: inherit;
+  position: relative;
+  overflow: hidden;
+}
+.submit-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+  transform: translateX(-100%);
+  transition: transform 0.5s;
+}
+.submit-btn:hover::after { transform: translateX(100%); }
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(244, 114, 182, 0.45);
+}
+.submit-btn:active { transform: scale(0.97); }
+
+/* ===== Post Card ===== */
+.post-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+  border: 2px solid var(--pink-100);
+  cursor: pointer;
+  transition: all var(--transition);
+  animation: fadeInUp 0.4s ease-out;
+  position: relative;
+}
+.post-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--pink-200);
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.post-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.post-avatar {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--pink-200), var(--pink-400));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(244, 114, 182, 0.2);
+}
+.post-meta { flex: 1; min-width: 0; }
+.post-author {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--pink-700);
+}
+.post-time {
+  font-size: 12px;
+  color: var(--text-light);
+}
+.post-content {
+  font-size: 15px;
+  line-height: 1.75;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.post-image {
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  border: 3px solid var(--pink-100);
+  transition: transform var(--transition);
+}
+.post-image:hover { transform: scale(1.02); }
+.post-video {
+  width: 100%;
+  max-height: 360px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  border: 3px solid var(--pink-100);
+  background: #000;
+}
+.is-mine-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--pink-300), var(--pink-400));
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 10px;
+  border-radius: 50px;
+  margin-left: 6px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* ===== Post Actions ===== */
+.post-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 18px;
+  border: 2px solid var(--pink-100);
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--white);
+  color: var(--text);
+  transition: all var(--transition);
+  user-select: none;
+  font-family: inherit;
+}
+.action-btn:hover {
+  background: var(--pink-50);
+  border-color: var(--pink-300);
+}
+.action-btn.liked {
+  background: #fff0f3;
+  border-color: #f472b6;
+  color: #f472b6;
+  box-shadow: 0 0 0 3px rgba(244,114,182,0.1);
+}
+.action-btn.bookmarked {
+  background: #fff0f3;
+  border-color: #f472b6;
+  color: #f472b6;
+  box-shadow: 0 0 0 3px rgba(244,114,182,0.1);
+}
+.action-btn .count {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* ===== Comments ===== */
+.comments-inline {
+  margin-top: 14px;
+  border-top: 2px dashed var(--pink-100);
+  padding-top: 12px;
+}
+.comment-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  animation: fadeInUp 0.3s ease-out;
+}
+.comment-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pink-100);
+}
+.comment-body { flex: 1; min-width: 0; }
+.comment-author {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pink-600);
+}
+.comment-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+  word-break: break-word;
+}
+.comment-time {
+  font-size: 11px;
+  color: var(--text-light);
+}
+.comment-reply-btn {
+  font-size: 11px;
+  color: var(--pink-500);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 8px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: color var(--transition);
+}
+.comment-reply-btn:hover { color: var(--pink-700); text-decoration: underline; }
+.reply-item {
+  margin-left: 22px;
+  padding-left: 12px;
+  border-left: 2px solid var(--pink-200);
+  margin-top: 6px;
+}
+.collapsed-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--pink-500);
+  padding: 8px 0 2px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: color var(--transition);
+}
+.collapsed-hint:hover { color: var(--pink-700); text-decoration: underline; }
+.add-comment-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.add-comment-row input {
+  flex: 1;
+  padding: 11px 16px;
+  border: 2px solid var(--pink-100);
+  border-radius: 50px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--pink-50);
+  outline: none;
+  transition: all var(--transition);
+}
+.add-comment-row input:focus {
+  border-color: var(--pink-400);
+  background: #fff;
+}
+.add-comment-row button {
+  padding: 11px 20px;
+  border: none;
+  border-radius: 50px;
+  background: linear-gradient(135deg, var(--pink-400), var(--pink-500));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition);
+  font-family: inherit;
+}
+.add-comment-row button:hover {
+  box-shadow: 0 2px 12px rgba(244,114,182,0.4);
+}
+
+/* ===== Modal ===== */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(92, 61, 74, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal-content {
+  background: var(--white);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  border: 2px solid var(--pink-100);
+  animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 2px solid var(--pink-100);
+  position: sticky;
+  top: 0;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius) var(--radius) 0 0;
+  z-index: 2;
+}
+.modal-header h3 {
+  font-size: 18px;
+  color: var(--pink-600);
+  font-weight: 700;
+}
+.modal-close {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--pink-200);
+  background: var(--white);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pink-500);
+  transition: all var(--transition);
+  font-family: inherit;
+}
+.modal-close:hover {
+  background: var(--pink-50);
+  border-color: var(--pink-400);
+  transform: rotate(90deg);
+}
+.modal-body { padding: 24px; }
+.modal-body .post-content { font-size: 16px; }
+.modal-body .post-image,
+.modal-body .post-video { max-height: 520px; }
+
+/* ===== Reply Input ===== */
+.reply-input-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  margin-left: 22px;
+}
+.reply-input-row input {
+  flex: 1;
+  padding: 9px 14px;
+  border: 2px solid var(--pink-100);
+  border-radius: 50px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--pink-50);
+  outline: none;
+  transition: all var(--transition);
+}
+.reply-input-row input:focus { border-color: var(--pink-400); background: #fff; }
+.reply-input-row button {
+  padding: 9px 16px;
+  border: none;
+  border-radius: 50px;
+  background: var(--pink-400);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+.reply-input-row button:hover {
+  background: var(--pink-500);
+}
+
+/* ===== Empty State ===== */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--text-light);
+  animation: fadeInUp 0.5s ease-out;
+}
+.empty-state .empty-icon {
+  font-size: 72px;
+  display: block;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+.empty-state p { font-size: 15px; letter-spacing: 1px; }
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--pink-50); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--pink-300); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--pink-400); }
+
+/* ===== Toast ===== */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: var(--pink-600);
+  color: #fff;
+  padding: 12px 28px;
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 24px rgba(244,114,182,0.4);
+  animation: toastIn 0.35s ease-out, toastOut 0.3s 1.7s ease-out forwards;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-24px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-24px) scale(0.9); }
+}
+
+/* ===== Floating Paws ===== */
+.paw-float {
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+  font-size: 36px;
+  opacity: 0.10;
+  animation: floatPaw 10s ease-in-out infinite;
+  user-select: none;
+}
+.paw-float:nth-child(1) { top: 6%; left: 4%; animation-delay: 0s; font-size: 46px; opacity: 0.07; }
+.paw-float:nth-child(2) { top: 18%; right: 6%; animation-delay: 2s; font-size: 32px; opacity: 0.09; }
+.paw-float:nth-child(3) { top: 52%; left: 2%; animation-delay: 4s; font-size: 52px; opacity: 0.06; }
+.paw-float:nth-child(4) { top: 68%; right: 4%; animation-delay: 1s; font-size: 36px; opacity: 0.08; }
+.paw-float:nth-child(5) { top: 32%; left: 90%; animation-delay: 5.5s; font-size: 28px; opacity: 0.10; }
+.paw-float:nth-child(6) { top: 84%; left: 48%; animation-delay: 3s; font-size: 40px; opacity: 0.07; }
+
+@keyframes floatPaw {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-18px) rotate(4deg); }
+  50% { transform: translateY(-6px) rotate(-2deg); }
+  75% { transform: translateY(12px) rotate(-4deg); }
+}
+
+/* ===== Loading ===== */
+.loading-spinner {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-light);
+}
+.loading-spinner span {
+  display: inline-block;
+  font-size: 36px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 480px) {
+  .app-container { padding: 12px 10px 60px; }
+  .post-form-card { padding: 18px; border-radius: var(--radius-sm); }
+  .post-card { padding: 16px; border-radius: var(--radius-sm); }
+  .modal-content { max-height: 92vh; border-radius: var(--radius-sm); }
+  .header h1 { font-size: 24px; }
+  .header-logo { font-size: 44px; }
+  .tab-btn { font-size: 13px; padding: 10px; }
+  .paw-float { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Floating paws -->
+<div class="paw-float">🐾</div><div class="paw-float">🐾</div><div class="paw-float">🐾</div>
+<div class="paw-float">🐾</div><div class="paw-float">🐾</div><div class="paw-float">🐾</div>
+
+<div class="app-container">
+  <header class="header">
+    <span class="header-logo">🐱</span>
+    <h1>咪语留言板</h1>
+    <p>悄悄留下你的小爪印吧 ~</p>
+    <div class="conn-status" id="connStatus">
+      <span class="conn-dot"></span>
+      <span id="connLabel">本地模式</span>
+    </div>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-bar">
+    <button class="tab-btn active" id="tabAll" onclick="switchTab('all')">🐾 全部留言</button>
+    <button class="tab-btn" id="tabMine" onclick="switchTab('mine')">🐱 我的留言</button>
+  </nav>
+
+  <!-- Sub Tabs -->
+  <div class="subtab-bar" id="subtabBar" style="display:none;">
+    <button class="subtab-btn active" id="subCreated" onclick="switchSubTab('created')">我发布的</button>
+    <button class="subtab-btn" id="subLiked" onclick="switchSubTab('liked')">我点赞的</button>
+    <button class="subtab-btn" id="subBookmarked" onclick="switchSubTab('bookmarked')">我收藏的</button>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="search-wrap" id="searchWrap">
+    <span class="search-icon">🔍</span>
+    <input id="searchInput" type="text" placeholder="搜索留言内容..." oninput="onSearch()" autocomplete="off">
+    <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+  </div>
+
+  <!-- Post Form -->
+  <div class="post-form-card" id="postFormWrap">
+    <div class="form-title">🐾 写点什么...</div>
+    <div class="form-group">
+      <label>💬 内容</label>
+      <textarea id="postText" placeholder="分享你的想法..." maxlength="5000"></textarea>
+    </div>
+    <div class="form-group">
+      <label>🖼️ 图片链接（可选）</label>
+      <input id="postImage" type="url" placeholder="https://example.com/image.jpg">
+    </div>
+    <div class="form-group">
+      <label>🎬 视频链接（可选，支持 mp4/webm 直链）</label>
+      <input id="postVideo" type="url" placeholder="https://example.com/video.mp4">
+    </div>
+    <button class="submit-btn" onclick="createPost()">🐱 发布留言</button>
+  </div>
+
+  <!-- Posts Feed -->
+  <div id="postsFeed"></div>
+</div>
+
+<!-- Detail Modal -->
+<div id="detailModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeDetail()">
+  <div class="modal-content" id="modalContent"></div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ===== Config =====
+const API_BASE = window.location.origin + '/api';
+
+// ===== SSE Connection =====
+let sseConnected = false;
+let sseRetryTimer = null;
+
+function connectSSE() {
+  try {
+    const es = new EventSource(API_BASE + '/events');
+    es.addEventListener('connected', () => {
+      sseConnected = true;
+      updateConnStatus(true);
+    });
+    es.addEventListener('post_created', () => {
+      if (currentTab === 'all') renderFeed();
+    });
+    es.addEventListener('post_updated', () => {
+      if (currentTab === 'all') renderFeed();
+      else if (currentTab === 'mine') renderMyPosts();
+    });
+    es.onerror = () => {
+      sseConnected = false;
+      updateConnStatus(false);
+      es.close();
+      scheduleSSERetry();
+    };
+    es.onopen = () => {
+      sseConnected = true;
+      updateConnStatus(true);
+      if (sseRetryTimer) { clearTimeout(sseRetryTimer); sseRetryTimer = null; }
+    };
+  } catch {
+    sseConnected = false;
+    updateConnStatus(false);
+    scheduleSSERetry();
+  }
+}
+
+function scheduleSSERetry() {
+  if (sseRetryTimer) return;
+  sseRetryTimer = setTimeout(() => {
+    sseRetryTimer = null;
+    connectSSE();
+  }, 5000);
+}
+
+function updateConnStatus(online) {
+  const el = document.getElementById('connStatus');
+  const label = document.getElementById('connLabel');
+  if (online) {
+    el.className = 'conn-status';
+    label.textContent = '已连接服务器';
+  } else {
+    el.className = 'conn-status offline';
+    label.textContent = '离线模式（数据保存在本地）';
+  }
+}
+
+// ===== Data Layer (localStorage fallback) =====
+const STORAGE_KEY = 'miyu_posts';
+const STORAGE_BACKUP_KEY = 'miyu_posts_backup';
+const USER_KEY = 'miyu_user';
+
+function getLocalPosts() {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (data) return JSON.parse(data);
+  } catch {}
+  try {
+    const backup = localStorage.getItem(STORAGE_BACKUP_KEY);
+    if (backup) {
+      const recovered = JSON.parse(backup);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(recovered));
+      return recovered;
+    }
+  } catch {}
+  return [];
+}
+
+function saveLocalPosts(posts) {
+  const json = JSON.stringify(posts);
+  try {
+    localStorage.setItem(STORAGE_KEY, json);
+    localStorage.setItem(STORAGE_BACKUP_KEY, json);
+  } catch (e) {
+    if (e.name === 'QuotaExceededError') {
+      const trimmed = posts.slice(0, Math.max(Math.floor(posts.length * 0.7), 10));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+        localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(trimmed));
+        showToast('存储空间不足，已保留最新留言~');
+      } catch {}
+    }
+  }
+}
+
+// ===== User Identity =====
+function getUserId() {
+  let id = localStorage.getItem(USER_KEY);
+  if (!id) {
+    id = 'user_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    localStorage.setItem(USER_KEY, id);
+  }
+  return id;
+}
+
+function getUserName() {
+  const id = getUserId();
+  return localStorage.getItem('miyu_name_' + id) || ('小猫咪' + id.slice(-4));
+}
+
+const currentUser = getUserId();
+let userName = getUserName();
+
+const avatars = ['🐱','😺','😸','😻','😽','🐈','🐈‍⬛','🎀','🌸','🐾','🧶','🩷','🍡','🎂','🍰','🧁'];
+function randomAvatar() { return avatars[Math.floor(Math.random() * avatars.length)]; }
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  const diff = Date.now() - d;
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+  if (diff < 604800000) return Math.floor(diff / 86400000) + '天前';
+  return d.toLocaleDateString('zh-CN');
+}
+
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+// ===== API Layer =====
+async function apiFetch(path, options = {}) {
+  try {
+    const res = await fetch(API_BASE + path, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ===== Unified Data API =====
+async function fetchPosts(search = '') {
+  const data = await apiFetch('/posts' + (search ? '?search=' + encodeURIComponent(search) : ''));
+  if (data) {
+    // Cache server data locally for offline fallback
+    saveLocalPosts(data);
+    return data;
+  }
+  let posts = getLocalPosts();
+  if (search) posts = posts.filter(p => p.text.toLowerCase().includes(search.toLowerCase()));
+  return posts;
+}
+
+async function fetchMyPosts() {
+  const data = await apiFetch('/posts/mine?userId=' + encodeURIComponent(currentUser));
+  if (data) return data;
+  const all = getLocalPosts();
+  return {
+    created: all.filter(p => p.authorId === currentUser),
+    liked: all.filter(p => p.likes.includes(currentUser)),
+    bookmarked: all.filter(p => p.bookmarks.includes(currentUser)),
+  };
+}
+
+async function doCreatePost(postData) {
+  const data = await apiFetch('/posts', { method: 'POST', body: JSON.stringify(postData) });
+  if (data) return data;
+  const post = { ...postData, id: genId(), timestamp: Date.now(), likes: [], bookmarks: [], comments: [] };
+  const posts = getLocalPosts();
+  posts.unshift(post);
+  saveLocalPosts(posts);
+  return post;
+}
+
+async function doToggleLike(postId) {
+  const data = await apiFetch('/posts/' + postId + '/like', {
+    method: 'POST', body: JSON.stringify({ userId: currentUser }),
+  });
+  if (data) return data;
+  const posts = getLocalPosts();
+  const idx = posts.findIndex(p => p.id === postId);
+  if (idx === -1) return null;
+  const p = posts[idx];
+  const likeIdx = p.likes.indexOf(currentUser);
+  if (likeIdx > -1) p.likes.splice(likeIdx, 1);
+  else p.likes.push(currentUser);
+  saveLocalPosts(posts);
+  return p;
+}
+
+async function doToggleBookmark(postId) {
+  const data = await apiFetch('/posts/' + postId + '/bookmark', {
+    method: 'POST', body: JSON.stringify({ userId: currentUser }),
+  });
+  if (data) return data;
+  const posts = getLocalPosts();
+  const idx = posts.findIndex(p => p.id === postId);
+  if (idx === -1) return null;
+  const p = posts[idx];
+  const bmIdx = p.bookmarks.indexOf(currentUser);
+  if (bmIdx > -1) p.bookmarks.splice(bmIdx, 1);
+  else p.bookmarks.push(currentUser);
+  saveLocalPosts(posts);
+  return p;
+}
+
+async function doAddComment(postId, text) {
+  const body = { text, authorId: currentUser, authorName: userName, authorAvatar: randomAvatar() };
+  const data = await apiFetch('/posts/' + postId + '/comments', { method: 'POST', body: JSON.stringify(body) });
+  if (data) return data;
+  const posts = getLocalPosts();
+  const idx = posts.findIndex(p => p.id === postId);
+  if (idx === -1) return null;
+  const comment = { ...body, id: genId(), timestamp: Date.now(), replies: [] };
+  posts[idx].comments.push(comment);
+  saveLocalPosts(posts);
+  return comment;
+}
+
+async function doAddReply(postId, commentId, text) {
+  const body = { text, authorId: currentUser, authorName: userName, authorAvatar: randomAvatar() };
+  const data = await apiFetch('/posts/' + postId + '/comments/' + commentId + '/replies', {
+    method: 'POST', body: JSON.stringify(body),
+  });
+  if (data) return data;
+  const posts = getLocalPosts();
+  const postIdx = posts.findIndex(p => p.id === postId);
+  if (postIdx === -1) return null;
+  const commentIdx = posts[postIdx].comments.findIndex(c => c.id === commentId);
+  if (commentIdx === -1) return null;
+  const reply = { ...body, id: genId(), timestamp: Date.now() };
+  posts[postIdx].comments[commentIdx].replies.push(reply);
+  saveLocalPosts(posts);
+  return reply;
+}
+
+// ===== UI State =====
+let currentTab = 'all';
+let currentSubTab = 'created';
+let searchQuery = '';
+
+// ===== Tab Switching =====
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabAll').classList.toggle('active', tab === 'all');
+  document.getElementById('tabMine').classList.toggle('active', tab === 'mine');
+  document.getElementById('subtabBar').style.display = tab === 'mine' ? 'flex' : 'none';
+  document.getElementById('postFormWrap').style.display = tab === 'all' ? 'block' : 'none';
+  document.getElementById('searchWrap').style.display = tab === 'all' ? 'block' : 'none';
+
+  if (tab === 'mine') {
+    document.getElementById('searchInput').value = '';
+    searchQuery = '';
+    document.getElementById('searchClear').classList.remove('visible');
+    switchSubTab('created');
+  } else {
+    renderFeed();
+  }
+}
+
+function switchSubTab(sub) {
+  currentSubTab = sub;
+  document.getElementById('subCreated').classList.toggle('active', sub === 'created');
+  document.getElementById('subLiked').classList.toggle('active', sub === 'liked');
+  document.getElementById('subBookmarked').classList.toggle('active', sub === 'bookmarked');
+  renderMyPosts();
+}
+
+// ===== Search =====
+function onSearch() {
+  const input = document.getElementById('searchInput');
+  const clearBtn = document.getElementById('searchClear');
+  searchQuery = input.value.trim().toLowerCase();
+  clearBtn.classList.toggle('visible', !!searchQuery);
+  renderFeed();
+}
+
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  searchQuery = '';
+  document.getElementById('searchClear').classList.remove('visible');
+  renderFeed();
+}
+
+// ===== Toast =====
+function showToast(msg) {
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+// ===== Create Post =====
+async function createPost() {
+  const textEl = document.getElementById('postText');
+  const imgEl = document.getElementById('postImage');
+  const vidEl = document.getElementById('postVideo');
+  const text = textEl.value.trim();
+  const imageUrl = imgEl.value.trim();
+  const videoUrl = vidEl.value.trim();
+
+  if (!text && !imageUrl && !videoUrl) {
+    showToast('至少写点什么吧~ 🐾');
+    return;
+  }
+
+  const postData = {
+    text, imageUrl: imageUrl || null, videoUrl: videoUrl || null,
+    authorId: currentUser, authorName: userName, authorAvatar: randomAvatar(),
+  };
+
+  await doCreatePost(postData);
+
+  textEl.value = '';
+  imgEl.value = '';
+  vidEl.value = '';
+
+  if (currentTab === 'all') renderFeed();
+  showToast('发布成功！喵~ 🐱');
+}
+
+// ===== Like & Bookmark =====
+async function toggleLike(postId, event) {
+  event.stopPropagation();
+  const result = await doToggleLike(postId);
+  const liked = result ? result.likes.includes(currentUser) : false;
+  if (currentTab === 'all') renderFeed();
+  else renderMyPosts();
+  if (result) showToast(liked ? '已点赞 🤍' : '已取消点赞');
+}
+
+async function toggleBookmark(postId, event) {
+  event.stopPropagation();
+  const result = await doToggleBookmark(postId);
+  const bookmarked = result ? result.bookmarks.includes(currentUser) : false;
+  if (currentTab === 'all') renderFeed();
+  else renderMyPosts();
+  if (result) showToast(bookmarked ? '已收藏 🌸' : '已取消收藏');
+}
+
+// ===== Comments =====
+async function addComment(postId, inputEl, event) {
+  if (event) event.stopPropagation();
+  const text = inputEl.value.trim();
+  if (!text) return;
+  await doAddComment(postId, text);
+  inputEl.value = '';
+  if (currentTab === 'all') renderFeed();
+  else renderMyPosts();
+}
+
+async function addReply(postId, commentId, inputEl, event) {
+  if (event) event.stopPropagation();
+  const text = inputEl.value.trim();
+  if (!text) return;
+  await doAddReply(postId, commentId, text);
+  inputEl.value = '';
+  const box = document.getElementById('replyBox-' + commentId);
+  if (box) box.style.display = 'none';
+  if (currentTab === 'all') renderFeed();
+  else renderMyPosts();
+}
+
+// ===== Render: Feed =====
+async function renderFeed() {
+  const container = document.getElementById('postsFeed');
+  container.innerHTML = '<div class="loading-spinner"><span>🐾</span></div>';
+
+  const posts = await fetchPosts(searchQuery);
+
+  if (posts.length === 0) {
+    container.innerHTML = searchQuery
+      ? `<div class="empty-state"><span class="empty-icon">🔍</span><p>没有找到包含"${escapeHtml(searchQuery)}"的留言~</p></div>`
+      : `<div class="empty-state"><span class="empty-icon">🐾</span><p>还没有留言呢~ 快来留下第一个小爪印吧！</p></div>`;
+    return;
+  }
+
+  container.innerHTML = posts.map(post => renderPostCard(post)).join('');
+}
+
+// ===== Render: My Posts =====
+async function renderMyPosts() {
+  const container = document.getElementById('postsFeed');
+  container.innerHTML = '<div class="loading-spinner"><span>🐾</span></div>';
+
+  const all = await fetchMyPosts();
+
+  let posts, emptyMsg;
+
+  if (currentSubTab === 'created') {
+    posts = all.created;
+    emptyMsg = '你还没有发布过留言~';
+  } else if (currentSubTab === 'liked') {
+    posts = all.liked;
+    emptyMsg = '你还没有点赞过留言~';
+  } else {
+    posts = all.bookmarked;
+    emptyMsg = '你还没有收藏过留言~';
+  }
+
+  // Update badges
+  document.getElementById('subCreated').innerHTML = '我发布的<span class="badge">' + all.created.length + '</span>';
+  document.getElementById('subLiked').innerHTML = '我点赞的<span class="badge">' + all.liked.length + '</span>';
+  document.getElementById('subBookmarked').innerHTML = '我收藏的<span class="badge">' + all.bookmarked.length + '</span>';
+
+  if (posts.length === 0) {
+    container.innerHTML = `<div class="empty-state"><span class="empty-icon">🐱</span><p>${emptyMsg}</p></div>`;
+    return;
+  }
+
+  container.innerHTML = posts.map(post => renderPostCard(post)).join('');
+}
+
+// ===== Render: Single Post Card =====
+function renderPostCard(post) {
+  const liked = post.likes.includes(currentUser);
+  const bookmarked = post.bookmarks.includes(currentUser);
+  const commentCount = post.comments.length;
+  const shouldCollapse = commentCount > 5;
+  const visibleComments = shouldCollapse ? post.comments.slice(-3) : post.comments;
+
+  const renderComments = (comments, postId) => comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-avatar">${c.authorAvatar}</div>
+      <div class="comment-body">
+        <span class="comment-author">${c.authorName}</span>
+        <span class="comment-time"> · ${formatTime(c.timestamp)}</span>
+        <div class="comment-text">${escapeHtml(c.text)}</div>
+        <button class="comment-reply-btn" onclick="toggleReplyInput('${postId}','${c.id}',event)">回复</button>
+        <div id="replyBox-${c.id}" style="display:none;">
+          <div class="reply-input-row">
+            <input id="replyInput-${c.id}" placeholder="写下回复...">
+            <button onclick="addReply('${postId}','${c.id}',document.getElementById('replyInput-${c.id}'),event)">发送</button>
+          </div>
+        </div>
+        ${c.replies.map(r => `
+          <div class="reply-item comment-item">
+            <div class="comment-avatar">${r.authorAvatar}</div>
+            <div class="comment-body">
+              <span class="comment-author">${r.authorName}</span>
+              <span class="comment-time"> · ${formatTime(r.timestamp)}</span>
+              <div class="comment-text">${escapeHtml(r.text)}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  const commentsHTML = commentCount > 0 ? `
+    <div class="comments-inline" onclick="event.stopPropagation()">
+      ${shouldCollapse ? `<div class="collapsed-hint" onclick="openDetail('${post.id}')">共 ${commentCount} 条评论（已折叠，点击展开全部）🐾</div>` : ''}
+      ${renderComments(visibleComments, post.id)}
+      <div class="add-comment-row">
+        <input id="commentInput-${post.id}" placeholder="说点什么..." maxlength="500">
+        <button onclick="addComment('${post.id}',document.getElementById('commentInput-${post.id}'),event)">发送</button>
+      </div>
+    </div>
+  ` : `
+    <div class="comments-inline" onclick="event.stopPropagation()">
+      <div class="add-comment-row">
+        <input id="commentInput-${post.id}" placeholder="说点什么..." maxlength="500">
+        <button onclick="addComment('${post.id}',document.getElementById('commentInput-${post.id}'),event)">发送</button>
+      </div>
+    </div>
+  `;
+
+  const isMine = post.authorId === currentUser;
+  const mineBadge = isMine ? '<span class="is-mine-badge">我的留言</span>' : '';
+
+  return `
+    <div class="post-card" onclick="openDetail('${post.id}')">
+      <div class="post-header">
+        <div class="post-avatar">${post.authorAvatar}</div>
+        <div class="post-meta">
+          <div class="post-author">${post.authorName}${mineBadge}</div>
+          <div class="post-time">${formatTime(post.timestamp)}</div>
+        </div>
+        <span style="font-size:11px;color:var(--text-light);opacity:0.7">#${post.id.slice(-5)}</span>
+      </div>
+      ${post.text ? `<div class="post-content">${escapeHtml(post.text)}</div>` : ''}
+      ${post.imageUrl ? `<img class="post-image" src="${escapeAttr(post.imageUrl)}" alt="图片" loading="lazy" onerror="this.style.display='none'">` : ''}
+      ${post.videoUrl ? `<video class="post-video" src="${escapeAttr(post.videoUrl)}" controls preload="metadata"></video>` : ''}
+      <div class="post-actions" onclick="event.stopPropagation()">
+        <button class="action-btn ${liked ? 'liked' : ''}" onclick="toggleLike('${post.id}',event)">
+          ${liked ? '❤️' : '🤍'} <span class="count">${post.likes.length || ''}</span> ${liked ? '已赞' : '点赞'}
+        </button>
+        <button class="action-btn ${bookmarked ? 'bookmarked' : ''}" onclick="toggleBookmark('${post.id}',event)">
+          🐾 ${bookmarked ? '已收藏' : '收藏'}
+        </button>
+        <button class="action-btn" onclick="document.getElementById('commentInput-${post.id}').focus()">
+          💬 ${commentCount ? '<span class="count">' + commentCount + '</span>' : ''} 评论
+        </button>
+      </div>
+      ${commentsHTML}
+    </div>
+  `;
+}
+
+// ===== Reply Input Toggle =====
+function toggleReplyInput(commentId, event) {
+  event.stopPropagation();
+  const box = document.getElementById('replyBox-' + commentId);
+  if (box) {
+    const showing = box.style.display === 'block';
+    box.style.display = showing ? 'none' : 'block';
+    if (!showing) {
+      setTimeout(() => {
+        const input = document.getElementById('replyInput-' + commentId);
+        if (input) input.focus();
+      }, 50);
+    }
+  }
+}
+
+// ===== Detail Modal =====
+async function openDetail(postId) {
+  let post;
+  const serverData = await apiFetch('/posts');
+  if (serverData) {
+    post = serverData.find(p => p.id === postId);
+    saveLocalPosts(serverData);
+  }
+  if (!post) {
+    const posts = getLocalPosts();
+    post = posts.find(p => p.id === postId);
+  }
+  if (!post) return;
+
+  const liked = post.likes.includes(currentUser);
+  const bookmarked = post.bookmarks.includes(currentUser);
+
+  document.getElementById('modalContent').innerHTML = `
+    <div class="modal-header">
+      <h3>🐾 留言详情</h3>
+      <button class="modal-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="post-header">
+        <div class="post-avatar">${post.authorAvatar}</div>
+        <div class="post-meta">
+          <div class="post-author">${post.authorName}${post.authorId === currentUser ? '<span class="is-mine-badge">我的留言</span>' : ''}</div>
+          <div class="post-time">${formatTime(post.timestamp)}</div>
+        </div>
+      </div>
+      ${post.text ? `<div class="post-content">${escapeHtml(post.text)}</div>` : ''}
+      ${post.imageUrl ? `<img class="post-image" src="${escapeAttr(post.imageUrl)}" alt="图片" loading="lazy" onerror="this.style.display='none'" style="max-height:520px">` : ''}
+      ${post.videoUrl ? `<video class="post-video" src="${escapeAttr(post.videoUrl)}" controls style="max-height:520px"></video>` : ''}
+      <div class="post-actions">
+        <button class="action-btn ${liked ? 'liked' : ''}" id="modalLikeBtn" onclick="modalToggleLike('${post.id}')">
+          ${liked ? '❤️' : '🤍'} <span class="count">${post.likes.length || ''}</span> ${liked ? '已赞' : '点赞'}
+        </button>
+        <button class="action-btn ${bookmarked ? 'bookmarked' : ''}" id="modalBmBtn" onclick="modalToggleBookmark('${post.id}')">
+          🐾 ${bookmarked ? '已收藏' : '收藏'}
+        </button>
+      </div>
+      <div style="border-top:2px dashed var(--pink-100);margin-top:20px;padding-top:16px;">
+        <div style="font-weight:700;color:var(--pink-600);margin-bottom:14px;font-size:15px;">💬 全部评论 (${post.comments.length})</div>
+        ${post.comments.length === 0 ? '<p style="color:var(--text-light);text-align:center;padding:32px;">还没有评论呢~ 快来发表第一条吧 🐾</p>' :
+          post.comments.map(c => `
+            <div class="comment-item">
+              <div class="comment-avatar">${c.authorAvatar}</div>
+              <div class="comment-body">
+                <span class="comment-author">${c.authorName}</span>
+                <span class="comment-time"> · ${formatTime(c.timestamp)}</span>
+                <div class="comment-text">${escapeHtml(c.text)}</div>
+                <button class="comment-reply-btn" onclick="toggleReplyInputDetail('${c.id}')">回复</button>
+                <div id="detailReplyBox-${c.id}" style="display:none;">
+                  <div class="reply-input-row">
+                    <input id="detailReplyInput-${c.id}" placeholder="写下回复...">
+                    <button onclick="addReplyFromDetail('${post.id}','${c.id}','detailReplyInput-${c.id}')">发送</button>
+                  </div>
+                </div>
+                ${c.replies.map(r => `
+                  <div class="reply-item comment-item">
+                    <div class="comment-avatar">${r.authorAvatar}</div>
+                    <div class="comment-body">
+                      <span class="comment-author">${r.authorName}</span>
+                      <span class="comment-time"> · ${formatTime(r.timestamp)}</span>
+                      <div class="comment-text">${escapeHtml(r.text)}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        <div class="add-comment-row" style="margin-top:12px;">
+          <input id="detailCommentInput" placeholder="说点什么..." maxlength="500">
+          <button onclick="addCommentFromDetail('${post.id}')">发送</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('detailModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  setTimeout(() => {
+    const inp = document.getElementById('detailCommentInput');
+    if (inp) inp.focus();
+  }, 300);
+}
+
+function closeDetail() {
+  document.getElementById('detailModal').style.display = 'none';
+  document.body.style.overflow = '';
+  if (currentTab === 'all') renderFeed();
+  else renderMyPosts();
+}
+
+async function modalToggleLike(postId) {
+  const result = await doToggleLike(postId);
+  if (result) {
+    const liked = result.likes.includes(currentUser);
+    const btn = document.getElementById('modalLikeBtn');
+    if (btn) {
+      btn.classList.toggle('liked', liked);
+      btn.innerHTML = `${liked ? '❤️' : '🤍'} <span class="count">${result.likes.length || ''}</span> ${liked ? '已赞' : '点赞'}`;
+    }
+  }
+}
+
+async function modalToggleBookmark(postId) {
+  const result = await doToggleBookmark(postId);
+  if (result) {
+    const bookmarked = result.bookmarks.includes(currentUser);
+    const btn = document.getElementById('modalBmBtn');
+    if (btn) {
+      btn.classList.toggle('bookmarked', bookmarked);
+      btn.innerHTML = `🐾 ${bookmarked ? '已收藏' : '收藏'}`;
+    }
+    showToast(bookmarked ? '已收藏 🌸' : '已取消收藏');
+  }
+}
+
+async function addCommentFromDetail(postId) {
+  const input = document.getElementById('detailCommentInput');
+  const text = input.value.trim();
+  if (!text) return;
+  await doAddComment(postId, text);
+  openDetail(postId);
+}
+
+async function addReplyFromDetail(postId, commentId, inputId) {
+  const input = document.getElementById(inputId);
+  const text = input.value.trim();
+  if (!text) return;
+  await doAddReply(postId, commentId, text);
+  openDetail(postId);
+}
+
+function toggleReplyInputDetail(commentId) {
+  const box = document.getElementById('detailReplyBox-' + commentId);
+  if (box) {
+    const showing = box.style.display === 'block';
+    box.style.display = showing ? 'none' : 'block';
+    if (!showing) {
+      setTimeout(() => {
+        const input = document.getElementById('detailReplyInput-' + commentId);
+        if (input) input.focus();
+      }, 50);
+    }
+  }
+}
+
+// ===== Utilities =====
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== Init =====
+function init() {
+  // Set random cute name
+  if (!localStorage.getItem('miyu_name_' + currentUser)) {
+    const cuteNames = ['小奶猫','棉花糖','樱花团子','草莓泡芙','蜜桃酱','奶油喵','布丁猫','糖霜爪','云朵喵','铃铛猫','糯米团','芝士猫','泡芙喵','奶盖茶','夹心喵'];
+    userName = cuteNames[Math.floor(Math.random() * cuteNames.length)];
+    localStorage.setItem('miyu_name_' + currentUser, userName);
+  }
+
+  // Connect SSE for real-time sync
+  connectSSE();
+
+  // Render initial feed
+  renderFeed();
+}
+
+init();
+</script>
+</body>
+</html>
