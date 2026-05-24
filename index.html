@@ -353,6 +353,79 @@ body::before {
 }
 .submit-btn:active { transform: scale(0.97); }
 
+/* ===== File Upload ===== */
+.file-upload-area {
+  border: 2px dashed var(--pink-200);
+  border-radius: var(--radius-sm);
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  background: var(--pink-50);
+  transition: all var(--transition);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.file-upload-area:hover {
+  border-color: var(--pink-400);
+  background: #fff;
+  box-shadow: 0 0 0 5px rgba(248, 164, 200, 0.1);
+}
+.file-upload-icon { font-size: 32px; }
+.file-upload-text { font-size: 13px; color: var(--text); font-weight: 500; }
+.file-upload-hint { font-size: 11px; color: var(--text-light); }
+.file-preview { margin-top: 10px; }
+.file-preview img, .file-preview video {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--pink-100);
+}
+.file-preview .preview-info {
+  font-size: 12px;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.file-preview .preview-remove {
+  background: var(--pink-100);
+  border: none;
+  border-radius: 50px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--pink-700);
+  font-weight: 600;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+.file-preview .preview-remove:hover { background: var(--pink-200); }
+.upload-progress { margin-top: 10px; }
+.progress-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--pink-100);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--pink-400), var(--pink-500));
+  width: 0%;
+  transition: width 0.3s;
+}
+.progress-text {
+  font-size: 11px;
+  color: var(--text-light);
+  display: block;
+  margin-top: 4px;
+  text-align: center;
+}
+
 /* ===== Post Card ===== */
 .post-card {
   background: var(--white);
@@ -850,12 +923,32 @@ body::before {
       <textarea id="postText" placeholder="分享你的想法..." maxlength="5000"></textarea>
     </div>
     <div class="form-group">
-      <label>🖼️ 图片链接（可选）</label>
-      <input id="postImage" type="url" placeholder="https://example.com/image.jpg">
+      <label>🖼️ 上传图片（可选）</label>
+      <div class="file-upload-area" id="imageUploadArea" onclick="document.getElementById('postImageFile').click()">
+        <span class="file-upload-icon">📷</span>
+        <span class="file-upload-text">点击选择图片，或拖拽到此区域</span>
+        <span class="file-upload-hint">支持 jpg / png / gif / webp</span>
+      </div>
+      <input id="postImageFile" type="file" accept="image/*" style="display:none" onchange="previewFile('image')">
+      <div class="file-preview" id="imagePreview"></div>
+      <div class="upload-progress" id="imageProgress" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="imageProgressFill"></div></div>
+        <span class="progress-text" id="imageProgressText">上传中...</span>
+      </div>
     </div>
     <div class="form-group">
-      <label>🎬 视频链接（可选，支持 mp4/webm 直链）</label>
-      <input id="postVideo" type="url" placeholder="https://example.com/video.mp4">
+      <label>🎬 上传视频（可选）</label>
+      <div class="file-upload-area" id="videoUploadArea" onclick="document.getElementById('postVideoFile').click()">
+        <span class="file-upload-icon">🎥</span>
+        <span class="file-upload-text">点击选择视频，或拖拽到此区域</span>
+        <span class="file-upload-hint">支持 mp4 / webm，最大 50MB</span>
+      </div>
+      <input id="postVideoFile" type="file" accept="video/*" style="display:none" onchange="previewFile('video')">
+      <div class="file-preview" id="videoPreview"></div>
+      <div class="upload-progress" id="videoProgress" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="videoProgressFill"></div></div>
+        <span class="progress-text" id="videoProgressText">上传中...</span>
+      </div>
     </div>
     <button class="submit-btn" onclick="createPost()">🐱 发布留言</button>
   </div>
@@ -1172,33 +1265,174 @@ function showToast(msg) {
   setTimeout(() => el.remove(), 2200);
 }
 
+// ===== File Selection & Preview =====
+let selectedImageFile = null;
+let selectedVideoFile = null;
+
+function previewFile(type) {
+  const input = document.getElementById(type === 'image' ? 'postImageFile' : 'postVideoFile');
+  const file = input.files[0];
+  if (!file) return;
+
+  if (type === 'image') {
+    selectedImageFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById('imagePreview').innerHTML = `
+        <img src="${e.target.result}" alt="预览">
+        <div class="preview-info">
+          <span>${file.name} (${formatFileSize(file.size)})</span>
+          <button class="preview-remove" onclick="clearFile('image', event)">移除</button>
+        </div>`;
+      document.getElementById('imageUploadArea').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  } else {
+    selectedVideoFile = file;
+    const url = URL.createObjectURL(file);
+    document.getElementById('videoPreview').innerHTML = `
+      <video src="${url}" controls></video>
+      <div class="preview-info">
+        <span>${file.name} (${formatFileSize(file.size)})</span>
+        <button class="preview-remove" onclick="clearFile('video', event)">移除</button>
+      </div>`;
+    document.getElementById('videoUploadArea').style.display = 'none';
+  }
+}
+
+function clearFile(type, event) {
+  event.stopPropagation();
+  if (type === 'image') {
+    selectedImageFile = null;
+    document.getElementById('postImageFile').value = '';
+    document.getElementById('imagePreview').innerHTML = '';
+    document.getElementById('imageUploadArea').style.display = '';
+  } else {
+    selectedVideoFile = null;
+    document.getElementById('postVideoFile').value = '';
+    document.getElementById('videoPreview').innerHTML = '';
+    document.getElementById('videoUploadArea').style.display = '';
+  }
+}
+
+// Drag & drop support
+['image', 'video'].forEach(type => {
+  const area = document.getElementById(type + 'UploadArea');
+  if (!area) return;
+  area.addEventListener('dragover', (e) => { e.preventDefault(); area.style.borderColor = 'var(--pink-500)'; });
+  area.addEventListener('dragleave', () => { area.style.borderColor = ''; });
+  area.addEventListener('drop', (e) => {
+    e.preventDefault();
+    area.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const input = document.getElementById(type === 'image' ? 'postImageFile' : 'postVideoFile');
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      previewFile(type);
+    }
+  });
+});
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// ===== File Upload with Progress =====
+function uploadFile(file, progressFillId, progressTextId, progressWrapId) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', API_BASE + '/upload');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        document.getElementById(progressFillId).style.width = pct + '%';
+        document.getElementById(progressTextId).textContent = `上传中 ${pct}%`;
+      }
+    };
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status === 200 && data.files && data.files.length > 0) {
+          resolve(data.files[0].url);
+        } else {
+          reject(new Error(data.error || 'upload failed'));
+        }
+      } catch { reject(new Error('upload failed')); }
+    };
+
+    xhr.onerror = () => reject(new Error('网络错误'));
+    xhr.send(formData);
+  });
+}
+
 // ===== Create Post =====
 async function createPost() {
   const textEl = document.getElementById('postText');
-  const imgEl = document.getElementById('postImage');
-  const vidEl = document.getElementById('postVideo');
   const text = textEl.value.trim();
-  const imageUrl = imgEl.value.trim();
-  const videoUrl = vidEl.value.trim();
 
-  if (!text && !imageUrl && !videoUrl) {
+  if (!text && !selectedImageFile && !selectedVideoFile) {
     showToast('至少写点什么吧~ 🐾');
     return;
   }
 
-  const postData = {
-    text, imageUrl: imageUrl || null, videoUrl: videoUrl || null,
-    authorId: currentUser, authorName: userName, authorAvatar: randomAvatar(),
-  };
+  document.querySelector('.submit-btn').disabled = true;
+  document.querySelector('.submit-btn').textContent = '⏳ 上传中...';
 
-  await doCreatePost(postData);
+  let imageUrl = null;
+  let videoUrl = null;
 
-  textEl.value = '';
-  imgEl.value = '';
-  vidEl.value = '';
+  try {
+    // Upload image if selected
+    if (selectedImageFile) {
+      document.getElementById('imageProgress').style.display = 'block';
+      imageUrl = await uploadFile(selectedImageFile, 'imageProgressFill', 'imageProgressText', 'imageProgress');
+    }
 
-  if (currentTab === 'all') renderFeed();
-  showToast('发布成功！喵~ 🐱');
+    // Upload video if selected
+    if (selectedVideoFile) {
+      document.getElementById('videoProgress').style.display = 'block';
+      videoUrl = await uploadFile(selectedVideoFile, 'videoProgressFill', 'videoProgressText', 'videoProgress');
+    }
+
+    const postData = {
+      text, imageUrl, videoUrl,
+      authorId: currentUser, authorName: userName, authorAvatar: randomAvatar(),
+    };
+
+    await doCreatePost(postData);
+
+    // Reset form
+    textEl.value = '';
+    selectedImageFile = null;
+    selectedVideoFile = null;
+    document.getElementById('postImageFile').value = '';
+    document.getElementById('postVideoFile').value = '';
+    document.getElementById('imagePreview').innerHTML = '';
+    document.getElementById('videoPreview').innerHTML = '';
+    document.getElementById('imageUploadArea').style.display = '';
+    document.getElementById('videoUploadArea').style.display = '';
+    document.getElementById('imageProgress').style.display = 'none';
+    document.getElementById('videoProgress').style.display = 'none';
+    document.getElementById('imageProgressFill').style.width = '0%';
+    document.getElementById('videoProgressFill').style.width = '0%';
+
+    if (currentTab === 'all') renderFeed();
+    showToast('发布成功！喵~ 🐱');
+  } catch (e) {
+    showToast('上传失败：' + e.message);
+  }
+
+  document.querySelector('.submit-btn').disabled = false;
+  document.querySelector('.submit-btn').textContent = '🐱 发布留言';
 }
 
 // ===== Like & Bookmark =====

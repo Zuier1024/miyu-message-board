@@ -16,6 +16,82 @@ const isCloud = !!process.env.RAILWAY_ENVIRONMENT || !!process.env.RENDER || !!p
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]', 'utf-8');
 
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// ===== Multipart parser =====
+function parseMultipart(buffer, boundary) {
+  const result = { fields: {}, files: [] };
+  if (!boundary || !buffer) return result;
+
+  const boundaryStr = '--' + boundary;
+  const parts = [];
+  let start = buffer.indexOf(boundaryStr);
+  if (start === -1) return result;
+
+  while (start !== -1) {
+    const partStart = start + boundaryStr.length + 2; // skip \r\n
+    if (partStart >= buffer.length) break;
+    start = buffer.indexOf(boundaryStr, partStart);
+    const partEnd = start === -1 ? buffer.length - 2 : start - 2; // -2 for \r\n
+    if (partEnd > partStart) {
+      parts.push(buffer.slice(partStart, partEnd));
+    }
+  }
+
+  for (const part of parts) {
+    const headerEnd = part.indexOf('\r\n\r\n');
+    if (headerEnd === -1) continue;
+    const headerStr = part.slice(0, headerEnd).toString('utf-8');
+    const body = part.slice(headerEnd + 4);
+
+    const nameMatch = headerStr.match(/name="([^"]+)"/);
+    const filenameMatch = headerStr.match(/filename="([^"]+)"/);
+    const name = nameMatch ? nameMatch[1] : null;
+    if (!name) continue;
+
+    if (filenameMatch) {
+      const filename = filenameMatch[1];
+      const ext = path.extname(filename).toLowerCase();
+      const safeName = Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + ext;
+      const filePath = path.join(UPLOADS_DIR, safeName);
+      fs.writeFileSync(filePath, body);
+      const mime = ext === '.mp4' || ext === '.webm' ? 'video/' + ext.slice(1)
+        : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+        : ext === '.png' ? 'image/png'
+        : ext === '.gif' ? 'image/gif'
+        : ext === '.svg' ? 'image/svg+xml'
+        : 'application/octet-stream';
+      result.files.push({
+        fieldName: name,
+        originalName: filename,
+        savedName: safeName,
+        url: '/uploads/' + safeName,
+        size: body.length,
+        mimeType: mime,
+      });
+    } else {
+      result.fields[name] = body.toString('utf-8');
+    }
+  }
+
+  return result;
+}
+
+function getRawBody(req, maxSize = 50 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxSize) { req.destroy(); reject(new Error('too large')); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 // ===== SSE clients =====
 const sseClients = new Set();
 
@@ -434,8 +510,37 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 201, posts[postIdx].comments[commentIdx].replies.slice(-1)[0]);
   }
 
+  // POST /api/upload - upload files (multipart)
+  if (req.method === 'POST' && url.pathname === '/api/upload') {
+    const contentType = req.headers['content-type'] || '';
+    const boundaryMatch = contentType.match(/boundary=(.+)$/);
+    if (!boundaryMatch) return sendJSON(res, 400, { error: 'multipart required' });
+    try {
+      const buffer = await getRawBody(req);
+      const parsed = parseMultipart(buffer, boundaryMatch[1].replace(/^"|"$/g, ''));
+      if (parsed.files.length === 0) return sendJSON(res, 400, { error: 'no file' });
+      return sendJSON(res, 200, { files: parsed.files });
+    } catch (e) {
+      return sendJSON(res, 400, { error: e.message === 'too large' ? 'file too large (max 50MB)' : 'upload failed' });
+    }
+  }
+
   // Static files
   if (req.method === 'GET') {
+    // Serve uploaded files from data/uploads/
+    if (url.pathname.startsWith('/uploads/')) {
+      const uploadPath = path.join(UPLOADS_DIR, path.basename(url.pathname));
+      try {
+        if (fs.existsSync(uploadPath) && !fs.statSync(uploadPath).isDirectory()) {
+          const ext = path.extname(uploadPath).toLowerCase();
+          const contentType = MIME[ext] || 'application/octet-stream';
+          const data = fs.readFileSync(uploadPath);
+          res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=86400' });
+          res.end(data);
+          return;
+        }
+      } catch {}
+    }
     const filePath = url.pathname === '/' ? '/index.html' : url.pathname;
     if (serveStatic(res, filePath)) return;
   }
