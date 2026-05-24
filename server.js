@@ -10,11 +10,15 @@ const PORT = process.env.PORT || 3456;
 const TUNNEL_SUBDOMAIN = process.env.TUNNEL_SUBDOMAIN || 'miyu-' + require('crypto').createHash('sha256').update(os.hostname()).digest('hex').slice(0, 8);
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'posts.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
 const isCloud = !!process.env.RAILWAY_ENVIRONMENT || !!process.env.RENDER || !!process.env.KOYEB;
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]', 'utf-8');
+if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '{}', 'utf-8');
+if (!fs.existsSync(TOKENS_FILE)) fs.writeFileSync(TOKENS_FILE, '{}', 'utf-8');
 
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -100,6 +104,35 @@ function broadcastSSE(event, data) {
   for (const res of sseClients) {
     try { res.write(payload); } catch { sseClients.delete(res); }
   }
+}
+
+// ===== Auth helpers =====
+function readUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')); } catch { return {}; }
+}
+function writeUsers(users) {
+  fs.writeFileSync(USERS_FILE + '.tmp', JSON.stringify(users, null, 2), 'utf-8');
+  fs.renameSync(USERS_FILE + '.tmp', USERS_FILE);
+}
+function readTokens() {
+  try { return JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf-8')); } catch { return {}; }
+}
+function writeTokens(tokens) {
+  fs.writeFileSync(TOKENS_FILE + '.tmp', JSON.stringify(tokens, null, 2), 'utf-8');
+  fs.renameSync(TOKENS_FILE + '.tmp', TOKENS_FILE);
+}
+function hashPassword(pwd) {
+  return require('crypto').createHash('sha256').update('miyu_salt_' + pwd).digest('hex');
+}
+function getAuthUser(req) {
+  const auth = req.headers['authorization'];
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  const token = auth.slice(7);
+  const tokens = readTokens();
+  return tokens[token] || null;
+}
+function genToken() {
+  return require('crypto').randomBytes(24).toString('hex');
 }
 
 // ===== MIME types =====
@@ -359,6 +392,62 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const segments = url.pathname.split('/').filter(Boolean);
 
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400',
+    });
+    return res.end();
+  }
+
+  // POST /api/auth/register
+  if (req.method === 'POST' && url.pathname === '/api/auth/register') {
+    const { username, password } = await getBody(req);
+    if (!username || !password) return sendJSON(res, 400, { error: '用户名和密码不能为空' });
+    if (username.length < 2 || username.length > 20) return sendJSON(res, 400, { error: '用户名2-20个字符' });
+    if (password.length < 4) return sendJSON(res, 400, { error: '密码至少4位' });
+    const users = readUsers();
+    if (users[username]) return sendJSON(res, 409, { error: '用户名已被注册' });
+    const userId = 'user_' + genId();
+    users[username] = { passwordHash: hashPassword(password), userId, createdAt: Date.now() };
+    writeUsers(users);
+    const token = genToken();
+    const tokens = readTokens();
+    tokens[token] = { userId, username, createdAt: Date.now() };
+    writeTokens(tokens);
+    return sendJSON(res, 201, { token, userId, username, isNew: true });
+  }
+
+  // POST /api/auth/login
+  if (req.method === 'POST' && url.pathname === '/api/auth/login') {
+    const { username, password } = await getBody(req);
+    if (!username || !password) return sendJSON(res, 400, { error: '用户名和密码不能为空' });
+    const users = readUsers();
+    const user = users[username];
+    if (!user || user.passwordHash !== hashPassword(password)) {
+      return sendJSON(res, 401, { error: '用户名或密码错误' });
+    }
+    const tokens = readTokens();
+    // Remove old tokens for this user
+    for (const [k, v] of Object.entries(tokens)) {
+      if (v.userId === user.userId || v.username === username) delete tokens[k];
+    }
+    const token = genToken();
+    tokens[token] = { userId: user.userId, username, createdAt: Date.now() };
+    writeTokens(tokens);
+    return sendJSON(res, 200, { token, userId: user.userId, username });
+  }
+
+  // GET /api/auth/me
+  if (req.method === 'GET' && url.pathname === '/api/auth/me') {
+    const auth = getAuthUser(req);
+    if (!auth) return sendJSON(res, 401, { error: '未登录' });
+    return sendJSON(res, 200, auth);
+  }
+
   // Health check
   if (req.method === 'GET' && url.pathname === '/health') {
     return sendJSON(res, 200, { status: 'ok', uptime: process.uptime(), upnp: upnpMapped, externalIP });
@@ -412,13 +501,14 @@ const server = http.createServer(async (req, res) => {
     if (!body.text && !body.imageUrl && !body.videoUrl) {
       return sendJSON(res, 400, { error: 'empty content' });
     }
+    const auth = getAuthUser(req);
     const post = {
       id: genId(),
       text: body.text || '',
       imageUrl: body.imageUrl || null,
       videoUrl: body.videoUrl || null,
-      authorId: body.authorId || 'anonymous',
-      authorName: body.authorName || '小猫咪',
+      authorId: auth ? auth.userId : (body.authorId || 'anonymous'),
+      authorName: auth ? auth.username : (body.authorName || '小猫咪'),
       authorAvatar: body.authorAvatar || '🐱',
       timestamp: Date.now(),
       likes: [],
@@ -464,6 +554,31 @@ const server = http.createServer(async (req, res) => {
     writePosts(posts);
     broadcastSSE('post_updated', { id: postId });
     return sendJSON(res, 200, p);
+  }
+
+  // DELETE /api/posts/:id
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'posts' && segments.length === 3) {
+    const postId = segments[2];
+    const auth = getAuthUser(req);
+    if (!auth) return sendJSON(res, 401, { error: '请先登录' });
+    const posts = readPosts();
+    const idx = posts.findIndex((p) => p.id === postId);
+    if (idx === -1) return sendJSON(res, 404, { error: 'not found' });
+    if (posts[idx].authorId !== auth.userId) return sendJSON(res, 403, { error: '只能删除自己的留言' });
+    const post = posts[idx];
+    // Delete associated files
+    if (post.imageUrl) {
+      const imgPath = path.join(UPLOADS_DIR, path.basename(post.imageUrl));
+      try { if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath); } catch {}
+    }
+    if (post.videoUrl) {
+      const vidPath = path.join(UPLOADS_DIR, path.basename(post.videoUrl));
+      try { if (fs.existsSync(vidPath)) fs.unlinkSync(vidPath); } catch {}
+    }
+    posts.splice(idx, 1);
+    writePosts(posts);
+    broadcastSSE('post_deleted', { id: postId });
+    return sendJSON(res, 200, { deleted: true });
   }
 
   // POST /api/posts/:id/comments

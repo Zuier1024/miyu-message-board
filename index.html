@@ -865,6 +865,26 @@ body::before {
   to { transform: rotate(360deg); }
 }
 
+/* ===== Auth ===== */
+.auth-bar { display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; justify-content:center; }
+.auth-btn { padding:6px 16px; border-radius:20px; border:2px solid var(--pink); background:white; color:var(--pink-dark); cursor:pointer; font-size:13px; font-weight:600; transition:all 0.2s; }
+.auth-btn:hover { background:var(--pink); color:white; }
+.auth-user { font-size:13px; color:var(--pink-dark); display:flex; align-items:center; gap:4px; }
+.auth-user .logout-btn { background:none; border:none; color:var(--pink-light); cursor:pointer; font-size:11px; text-decoration:underline; }
+.delete-btn { background:none; border:none; color:#e74c3c; cursor:pointer; font-size:13px; padding:2px 8px; opacity:0.7; transition:opacity 0.2s; }
+.delete-btn:hover { opacity:1; }
+.login-modal { position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:2000; }
+.login-card { background:white; border-radius:20px; padding:30px 24px; width:320px; max-width:92vw; box-shadow:0 20px 60px rgba(0,0,0,0.15); }
+.login-card h2 { text-align:center; color:var(--pink-dark); margin:0 0 6px; font-size:20px; }
+.login-card .subtitle { text-align:center; color:#999; font-size:12px; margin-bottom:20px; }
+.login-card input { width:100%; padding:12px 14px; border:2px solid #f1d4da; border-radius:12px; font-size:15px; margin-bottom:12px; box-sizing:border-box; outline:none; transition:border-color 0.2s; }
+.login-card input:focus { border-color:var(--pink); }
+.login-card .login-submit { width:100%; padding:12px; border-radius:25px; border:none; background:var(--pink); color:white; font-size:15px; font-weight:600; cursor:pointer; transition:all 0.2s; }
+.login-card .login-submit:hover { background:var(--pink-dark); }
+.login-card .switch-text { text-align:center; margin-top:12px; font-size:13px; color:#999; }
+.login-card .switch-text a { color:var(--pink); cursor:pointer; text-decoration:underline; }
+.login-card .error-msg { color:#e74c3c; font-size:13px; text-align:center; margin-bottom:8px; min-height:18px; }
+
 /* ===== Responsive ===== */
 @media (max-width: 480px) {
   .app-container { padding: 12px 10px 60px; }
@@ -889,6 +909,10 @@ body::before {
     <span class="header-logo">🐱</span>
     <h1>咪语留言板</h1>
     <p>悄悄留下你的小爪印吧 ~</p>
+    <div class="auth-bar">
+      <span class="auth-user" id="authUser" style="display:none;"></span>
+      <button class="auth-btn" id="authBtn" onclick="showLoginModal()">🔑 登录</button>
+    </div>
     <div class="conn-status" id="connStatus">
       <span class="conn-dot"></span>
       <span id="connLabel">本地模式</span>
@@ -987,6 +1011,10 @@ function connectSSE() {
       if (currentTab === 'all') renderFeed();
       else if (currentTab === 'mine') renderMyPosts();
     });
+    es.addEventListener('post_deleted', () => {
+      if (currentTab === 'all') renderFeed();
+      else if (currentTab === 'mine') renderMyPosts();
+    });
     es.onerror = () => {
       sseConnected = false;
       updateConnStatus(false);
@@ -1078,11 +1106,150 @@ function getUserName() {
   return localStorage.getItem('miyu_name_' + id) || ('小猫咪' + id.slice(-4));
 }
 
-const currentUser = getUserId();
-let userName = getUserName();
-
 const avatars = ['🐱','😺','😸','😻','😽','🐈','🐈‍⬛','🎀','🌸','🐾','🧶','🩷','🍡','🎂','🍰','🧁'];
 function randomAvatar() { return avatars[Math.floor(Math.random() * avatars.length)]; }
+
+// ===== Auth =====
+let authToken = localStorage.getItem('miyu_token') || '';
+let authUser = null;
+
+function getAuthHeaders() {
+  return authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
+}
+
+async function checkAuth() {
+  if (!authToken) { updateAuthUI(); return; }
+  try {
+    const res = await fetch(API_BASE + '/auth/me', {
+      headers: getAuthHeaders(),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      authUser = await res.json();
+      updateAuthUI();
+    } else {
+      // Token expired or invalid
+      authToken = '';
+      authUser = null;
+      localStorage.removeItem('miyu_token');
+      updateAuthUI();
+    }
+  } catch { updateAuthUI(); }
+}
+
+function updateAuthUI() {
+  const btn = document.getElementById('authBtn');
+  const userEl = document.getElementById('authUser');
+  if (authUser) {
+    btn.textContent = '👤 ' + authUser.username;
+    btn.onclick = null;
+    userEl.style.display = 'inline-flex';
+    userEl.innerHTML = '✅ ' + authUser.username + ' <button class="logout-btn" onclick="doLogout()">退出</button>';
+  } else {
+    btn.textContent = '🔑 登录';
+    btn.onclick = showLoginModal;
+    userEl.style.display = 'none';
+  }
+}
+
+function getCurrentUserId() {
+  return authUser ? authUser.userId : getUserId();
+}
+
+function getCurrentUserName() {
+  return authUser ? authUser.username : getUserName();
+}
+
+function showLoginModal() {
+  document.getElementById('loginModal').style.display = 'flex';
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginPassword2').value = '';
+  resetLoginMode();
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').style.display = 'none';
+}
+
+let isRegisterMode = false;
+function toggleLoginMode() {
+  isRegisterMode = !isRegisterMode;
+  resetLoginMode();
+}
+
+function resetLoginMode() {
+  document.getElementById('loginPassword2').style.display = isRegisterMode ? 'block' : 'none';
+  document.getElementById('loginSubmitBtn').textContent = isRegisterMode ? '注 册' : '登 录';
+  document.getElementById('switchLabel').textContent = isRegisterMode ? '已有账号？' : '还没有账号？';
+  document.getElementById('switchLink').textContent = isRegisterMode ? '去登录' : '注册新账号';
+  document.getElementById('loginError').textContent = '';
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+
+  if (isRegisterMode) {
+    const password2 = document.getElementById('loginPassword2').value;
+    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+    if (username.length < 2) { errEl.textContent = '用户名至少2个字符'; return; }
+    if (password.length < 4) { errEl.textContent = '密码至少4位'; return; }
+    if (password !== password2) { errEl.textContent = '两次密码不一致'; return; }
+
+    try {
+      const res = await fetch(API_BASE + '/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.error || '注册失败'; return; }
+      authToken = data.token;
+      authUser = { userId: data.userId, username: data.username };
+      localStorage.setItem('miyu_token', authToken);
+      updateAuthUI();
+      closeLoginModal();
+      renderFeed();
+      showToast('注册成功！欢迎 ' + data.username + '~');
+    } catch { errEl.textContent = '网络错误，请重试'; }
+  } else {
+    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+    try {
+      const res = await fetch(API_BASE + '/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.error || '登录失败'; return; }
+      authToken = data.token;
+      authUser = { userId: data.userId, username: data.username };
+      localStorage.setItem('miyu_token', authToken);
+      updateAuthUI();
+      closeLoginModal();
+      renderFeed();
+      showToast('登录成功！欢迎回来 ' + data.username + '~');
+    } catch { errEl.textContent = '网络错误，请重试'; }
+  }
+}
+
+function doLogout() {
+  authToken = '';
+  authUser = null;
+  localStorage.removeItem('miyu_token');
+  updateAuthUI();
+  renderFeed();
+  showToast('已退出登录');
+}
+
+// Legacy anonymous identity (fallback)
+const currentUser = getUserId();
+let userName = getUserName();
 
 function formatTime(ts) {
   const d = new Date(ts);
@@ -1101,7 +1268,7 @@ async function apiFetch(path, options = {}) {
   try {
     const res = await fetch(API_BASE + path, {
       signal: AbortSignal.timeout(15000),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       ...options,
     });
     if (!res.ok) return null;
@@ -1125,13 +1292,14 @@ async function fetchPosts(search = '') {
 }
 
 async function fetchMyPosts() {
-  const data = await apiFetch('/posts/mine?userId=' + encodeURIComponent(currentUser));
+  const uid = getCurrentUserId();
+  const data = await apiFetch('/posts/mine?userId=' + encodeURIComponent(uid));
   if (data && data.created) return data;
   const all = getLocalPosts();
   return {
-    created: all.filter(p => p.authorId === currentUser),
-    liked: all.filter(p => p.likes.includes(currentUser)),
-    bookmarked: all.filter(p => p.bookmarks.includes(currentUser)),
+    created: all.filter(p => p.authorId === uid),
+    liked: all.filter(p => p.likes.includes(uid)),
+    bookmarked: all.filter(p => p.bookmarks.includes(uid)),
   };
 }
 
@@ -1146,39 +1314,63 @@ async function doCreatePost(postData) {
 }
 
 async function doToggleLike(postId) {
+  const uid = getCurrentUserId();
   const data = await apiFetch('/posts/' + postId + '/like', {
-    method: 'POST', body: JSON.stringify({ userId: currentUser }),
+    method: 'POST', body: JSON.stringify({ userId: uid }),
   });
   if (data) return data;
   const posts = getLocalPosts();
   const idx = posts.findIndex(p => p.id === postId);
   if (idx === -1) return null;
   const p = posts[idx];
-  const likeIdx = p.likes.indexOf(currentUser);
+  const likeIdx = p.likes.indexOf(uid);
   if (likeIdx > -1) p.likes.splice(likeIdx, 1);
-  else p.likes.push(currentUser);
+  else p.likes.push(uid);
   saveLocalPosts(posts);
   return p;
 }
 
 async function doToggleBookmark(postId) {
+  const uid = getCurrentUserId();
   const data = await apiFetch('/posts/' + postId + '/bookmark', {
-    method: 'POST', body: JSON.stringify({ userId: currentUser }),
+    method: 'POST', body: JSON.stringify({ userId: uid }),
   });
   if (data) return data;
   const posts = getLocalPosts();
   const idx = posts.findIndex(p => p.id === postId);
   if (idx === -1) return null;
   const p = posts[idx];
-  const bmIdx = p.bookmarks.indexOf(currentUser);
+  const bmIdx = p.bookmarks.indexOf(uid);
   if (bmIdx > -1) p.bookmarks.splice(bmIdx, 1);
-  else p.bookmarks.push(currentUser);
+  else p.bookmarks.push(uid);
   saveLocalPosts(posts);
   return p;
 }
 
+async function deletePost(postId) {
+  if (!authToken) { showToast('请先登录才能删除留言'); return; }
+  if (!confirm('确定删除这条留言吗？')) return;
+  const res = await fetch(API_BASE + '/posts/' + postId, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (res.ok) {
+    // Also remove from local cache
+    const posts = getLocalPosts();
+    saveLocalPosts(posts.filter(p => p.id !== postId));
+    showToast('已删除');
+    if (currentTab === 'all') renderFeed(); else renderMyPosts();
+  } else {
+    try {
+      const err = await res.json();
+      showToast(err.error || '删除失败');
+    } catch { showToast('删除失败'); }
+  }
+}
+
 async function doAddComment(postId, text) {
-  const body = { text, authorId: currentUser, authorName: userName, authorAvatar: randomAvatar() };
+  const body = { text, authorId: getCurrentUserId(), authorName: getCurrentUserName(), authorAvatar: randomAvatar() };
   const data = await apiFetch('/posts/' + postId + '/comments', { method: 'POST', body: JSON.stringify(body) });
   if (data) return data;
   const posts = getLocalPosts();
@@ -1191,7 +1383,7 @@ async function doAddComment(postId, text) {
 }
 
 async function doAddReply(postId, commentId, text) {
-  const body = { text, authorId: currentUser, authorName: userName, authorAvatar: randomAvatar() };
+  const body = { text, authorId: getCurrentUserId(), authorName: getCurrentUserName(), authorAvatar: randomAvatar() };
   const data = await apiFetch('/posts/' + postId + '/comments/' + commentId + '/replies', {
     method: 'POST', body: JSON.stringify(body),
   });
@@ -1405,7 +1597,7 @@ async function createPost() {
 
     const postData = {
       text, imageUrl, videoUrl,
-      authorId: currentUser, authorName: userName, authorAvatar: randomAvatar(),
+      authorId: getCurrentUserId(), authorName: getCurrentUserName(), authorAvatar: randomAvatar(),
     };
 
     await doCreatePost(postData);
@@ -1438,8 +1630,9 @@ async function createPost() {
 // ===== Like & Bookmark =====
 async function toggleLike(postId, event) {
   event.stopPropagation();
+  const uid = getCurrentUserId();
   const result = await doToggleLike(postId);
-  const liked = result ? result.likes.includes(currentUser) : false;
+  const liked = result ? result.likes.includes(uid) : false;
   if (currentTab === 'all') renderFeed();
   else renderMyPosts();
   if (result) showToast(liked ? '已点赞 🤍' : '已取消点赞');
@@ -1447,8 +1640,9 @@ async function toggleLike(postId, event) {
 
 async function toggleBookmark(postId, event) {
   event.stopPropagation();
+  const uid = getCurrentUserId();
   const result = await doToggleBookmark(postId);
-  const bookmarked = result ? result.bookmarks.includes(currentUser) : false;
+  const bookmarked = result ? result.bookmarks.includes(uid) : false;
   if (currentTab === 'all') renderFeed();
   else renderMyPosts();
   if (result) showToast(bookmarked ? '已收藏 🌸' : '已取消收藏');
@@ -1529,8 +1723,9 @@ async function renderMyPosts() {
 
 // ===== Render: Single Post Card =====
 function renderPostCard(post) {
-  const liked = post.likes.includes(currentUser);
-  const bookmarked = post.bookmarks.includes(currentUser);
+  const uid = getCurrentUserId();
+  const liked = post.likes.includes(uid);
+  const bookmarked = post.bookmarks.includes(uid);
   const commentCount = post.comments.length;
   const shouldCollapse = commentCount > 5;
   const visibleComments = shouldCollapse ? post.comments.slice(-3) : post.comments;
@@ -1581,8 +1776,9 @@ function renderPostCard(post) {
     </div>
   `;
 
-  const isMine = post.authorId === currentUser;
+  const isMine = post.authorId === uid;
   const mineBadge = isMine ? '<span class="is-mine-badge">我的留言</span>' : '';
+  const deleteBtn = isMine ? `<button class="delete-btn" onclick="event.stopPropagation();deletePost('${post.id}')" title="删除">🗑️</button>` : '';
 
   return `
     <div class="post-card" onclick="openDetail('${post.id}')">
@@ -1593,6 +1789,7 @@ function renderPostCard(post) {
           <div class="post-time">${formatTime(post.timestamp)}</div>
         </div>
         <span style="font-size:11px;color:var(--text-light);opacity:0.7">#${post.id.slice(-5)}</span>
+        ${deleteBtn}
       </div>
       ${post.text ? `<div class="post-content">${escapeHtml(post.text)}</div>` : ''}
       ${post.imageUrl ? `<img class="post-image" src="${escapeAttr(post.imageUrl)}" alt="图片" loading="lazy" onerror="this.style.display='none'">` : ''}
@@ -1643,8 +1840,9 @@ async function openDetail(postId) {
   }
   if (!post) return;
 
-  const liked = post.likes.includes(currentUser);
-  const bookmarked = post.bookmarks.includes(currentUser);
+  const uid = getCurrentUserId();
+  const liked = post.likes.includes(uid);
+  const bookmarked = post.bookmarks.includes(uid);
 
   document.getElementById('modalContent').innerHTML = `
     <div class="modal-header">
@@ -1655,7 +1853,7 @@ async function openDetail(postId) {
       <div class="post-header">
         <div class="post-avatar">${post.authorAvatar}</div>
         <div class="post-meta">
-          <div class="post-author">${post.authorName}${post.authorId === currentUser ? '<span class="is-mine-badge">我的留言</span>' : ''}</div>
+          <div class="post-author">${post.authorName}${post.authorId === uid ? '<span class="is-mine-badge">我的留言</span>' : ''}</div>
           <div class="post-time">${formatTime(post.timestamp)}</div>
         </div>
       </div>
@@ -1725,9 +1923,10 @@ function closeDetail() {
 }
 
 async function modalToggleLike(postId) {
+  const uid = getCurrentUserId();
   const result = await doToggleLike(postId);
   if (result) {
-    const liked = result.likes.includes(currentUser);
+    const liked = result.likes.includes(uid);
     const btn = document.getElementById('modalLikeBtn');
     if (btn) {
       btn.classList.toggle('liked', liked);
@@ -1737,9 +1936,10 @@ async function modalToggleLike(postId) {
 }
 
 async function modalToggleBookmark(postId) {
+  const uid = getCurrentUserId();
   const result = await doToggleBookmark(postId);
   if (result) {
-    const bookmarked = result.bookmarks.includes(currentUser);
+    const bookmarked = result.bookmarks.includes(uid);
     const btn = document.getElementById('modalBmBtn');
     if (btn) {
       btn.classList.toggle('bookmarked', bookmarked);
@@ -1791,12 +1991,16 @@ function escapeAttr(str) {
 }
 
 // ===== Init =====
-function init() {
-  // Set random cute name
-  if (!localStorage.getItem('miyu_name_' + currentUser)) {
+async function init() {
+  // Check auth state first
+  await checkAuth();
+
+  // Set random cute name (for anonymous users)
+  const anonId = getUserId();
+  if (!localStorage.getItem('miyu_name_' + anonId)) {
     const cuteNames = ['小奶猫','棉花糖','樱花团子','草莓泡芙','蜜桃酱','奶油喵','布丁猫','糖霜爪','云朵喵','铃铛猫','糯米团','芝士猫','泡芙喵','奶盖茶','夹心喵'];
     userName = cuteNames[Math.floor(Math.random() * cuteNames.length)];
-    localStorage.setItem('miyu_name_' + currentUser, userName);
+    localStorage.setItem('miyu_name_' + anonId, userName);
   }
 
   // Connect SSE for real-time sync
@@ -1808,5 +2012,22 @@ function init() {
 
 init();
 </script>
+
+<!-- Login Modal -->
+<div id="loginModal" class="login-modal" style="display:none;" onclick="if(event.target===this)closeLoginModal()">
+  <div class="login-card">
+    <h2>🐱 登录咪语</h2>
+    <p class="subtitle">登录后可在不同设备查看你的留言</p>
+    <div class="error-msg" id="loginError"></div>
+    <input id="loginUsername" type="text" placeholder="用户名" maxlength="20" autocomplete="username">
+    <input id="loginPassword" type="password" placeholder="密码（至少4位）" maxlength="50" autocomplete="current-password">
+    <input id="loginPassword2" type="password" placeholder="确认密码" maxlength="50" style="display:none;" autocomplete="off">
+    <button class="login-submit" id="loginSubmitBtn" onclick="doLogin()">登 录</button>
+    <p class="switch-text">
+      <span id="switchLabel">还没有账号？</span>
+      <a id="switchLink" onclick="toggleLoginMode()">注册新账号</a>
+    </p>
+  </div>
+</div>
 </body>
 </html>
