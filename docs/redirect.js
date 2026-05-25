@@ -1,1 +1,1 @@
-const TUNNEL_URL = "https://ram-appreciate-framed-excitement.trycloudflare.com";
+const TUNNEL_URL = "https://flavor-bright-upload-entrepreneurs.trycloudflare.com";
