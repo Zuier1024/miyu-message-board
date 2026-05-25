@@ -974,7 +974,11 @@ body::before {
         <span class="progress-text" id="videoProgressText">上传中...</span>
       </div>
     </div>
-    <button class="submit-btn" onclick="createPost()">🐱 匿名发布</button>
+    <div class="form-group">
+      <label>🐱 昵称（留空则随机）</label>
+      <input type="text" id="postNickname" placeholder="想让大家怎么称呼你？" maxlength="12" style="width:100%;padding:12px 14px;border:2px solid #f1d4da;border-radius:12px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
+    </div>
+    <button class="submit-btn" onclick="createPost()">🐱 发布留言</button>
   </div>
 
   <!-- Posts Feed -->
@@ -1597,15 +1601,18 @@ async function createPost() {
       videoUrl = await uploadFile(selectedVideoFile, 'videoProgressFill', 'videoProgressText', 'videoProgress');
     }
 
+    const nickInput = document.getElementById('postNickname');
+    const displayName = (nickInput && nickInput.value.trim()) || randomNickname();
     const postData = {
       text, imageUrl, videoUrl,
-      authorId: getCurrentUserId(), authorName: randomNickname(), authorAvatar: randomAvatar(),
+      authorId: getCurrentUserId(), authorName: displayName, authorAvatar: randomAvatar(),
     };
 
     await doCreatePost(postData);
 
     // Reset form
     textEl.value = '';
+    document.getElementById('postNickname').value = '';
     selectedImageFile = null;
     selectedVideoFile = null;
     document.getElementById('postImageFile').value = '';
@@ -1626,7 +1633,7 @@ async function createPost() {
   }
 
   document.querySelector('.submit-btn').disabled = false;
-  document.querySelector('.submit-btn').textContent = '🐱 匿名发布';
+  document.querySelector('.submit-btn').textContent = '🐱 发布留言';
 }
 
 // ===== Like & Bookmark =====
