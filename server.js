@@ -508,7 +508,7 @@ const server = http.createServer(async (req, res) => {
       imageUrl: body.imageUrl || null,
       videoUrl: body.videoUrl || null,
       authorId: auth ? auth.userId : (body.authorId || 'anonymous'),
-      authorName: auth ? auth.username : (body.authorName || '小猫咪'),
+      authorName: body.authorName || '小猫咪',
       authorAvatar: body.authorAvatar || '🐱',
       timestamp: Date.now(),
       likes: [],
