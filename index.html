@@ -1112,6 +1112,10 @@ function getUserName() {
 
 const avatars = ['🐱','😺','😸','😻','😽','🐈','🐈‍⬛','🎀','🌸','🐾','🧶','🩷','🍡','🎂','🍰','🧁'];
 function randomAvatar() { return avatars[Math.floor(Math.random() * avatars.length)]; }
+function randomNickname() {
+  const names = ['小奶猫','棉花糖','樱花团子','草莓泡芙','蜜桃酱','奶油喵','布丁猫','糖霜爪','云朵喵','铃铛猫','糯米团','芝士猫','泡芙喵','奶盖茶','夹心喵','小布丁','草莓喵','桃花酥','小松饼','雪媚娘'];
+  return names[Math.floor(Math.random() * names.length)];
+}
 
 // ===== Auth =====
 let authToken = localStorage.getItem('miyu_token') || '';
@@ -1376,7 +1380,7 @@ async function deletePost(postId) {
 }
 
 async function doAddComment(postId, text) {
-  const body = { text, authorId: getCurrentUserId(), authorName: getCurrentUserName(), authorAvatar: randomAvatar() };
+  const body = { text, authorId: getCurrentUserId(), authorName: randomNickname(), authorAvatar: randomAvatar() };
   const data = await apiFetch('/posts/' + postId + '/comments', { method: 'POST', body: JSON.stringify(body) });
   if (data) return data;
   const posts = getLocalPosts();
@@ -1389,7 +1393,7 @@ async function doAddComment(postId, text) {
 }
 
 async function doAddReply(postId, commentId, text) {
-  const body = { text, authorId: getCurrentUserId(), authorName: getCurrentUserName(), authorAvatar: randomAvatar() };
+  const body = { text, authorId: getCurrentUserId(), authorName: randomNickname(), authorAvatar: randomAvatar() };
   const data = await apiFetch('/posts/' + postId + '/comments/' + commentId + '/replies', {
     method: 'POST', body: JSON.stringify(body),
   });
@@ -1602,7 +1606,7 @@ async function createPost() {
     }
 
     const nickname = document.getElementById('postNickname').value.trim();
-    const displayName = nickname || (['小奶猫','棉花糖','樱花团子','草莓泡芙','蜜桃酱','奶油喵','布丁猫','糖霜爪','云朵喵','铃铛猫','糯米团','芝士猫','泡芙喵','奶盖茶','夹心喵','小布丁','草莓喵','桃花酥','小松饼','雪媚娘'])[Math.floor(Math.random() * 20)];
+    const displayName = nickname || randomNickname();
     const postData = {
       text, imageUrl, videoUrl,
       authorId: getCurrentUserId(), authorName: displayName, authorAvatar: randomAvatar(),
