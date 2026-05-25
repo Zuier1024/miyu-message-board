@@ -974,11 +974,7 @@ body::before {
         <span class="progress-text" id="videoProgressText">上传中...</span>
       </div>
     </div>
-    <div class="form-group">
-      <label>🐱 昵称（可选，留空则随机）</label>
-      <input type="text" id="postNickname" placeholder="给自己起个昵称吧~" maxlength="12" style="width:100%;padding:12px 14px;border:2px solid #f1d4da;border-radius:12px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
-    </div>
-    <button class="submit-btn" onclick="createPost()">🐱 发布留言</button>
+    <button class="submit-btn" onclick="createPost()">🐱 匿名发布</button>
   </div>
 
   <!-- Posts Feed -->
@@ -1162,10 +1158,6 @@ function updateAuthUI() {
 
 function getCurrentUserId() {
   return authUser ? authUser.userId : getUserId();
-}
-
-function getCurrentUserName() {
-  return authUser ? authUser.username : getUserName();
 }
 
 function showLoginModal() {
@@ -1605,18 +1597,15 @@ async function createPost() {
       videoUrl = await uploadFile(selectedVideoFile, 'videoProgressFill', 'videoProgressText', 'videoProgress');
     }
 
-    const nickname = document.getElementById('postNickname').value.trim();
-    const displayName = nickname || randomNickname();
     const postData = {
       text, imageUrl, videoUrl,
-      authorId: getCurrentUserId(), authorName: displayName, authorAvatar: randomAvatar(),
+      authorId: getCurrentUserId(), authorName: randomNickname(), authorAvatar: randomAvatar(),
     };
 
     await doCreatePost(postData);
 
     // Reset form
     textEl.value = '';
-    document.getElementById('postNickname').value = '';
     selectedImageFile = null;
     selectedVideoFile = null;
     document.getElementById('postImageFile').value = '';
@@ -1637,7 +1626,7 @@ async function createPost() {
   }
 
   document.querySelector('.submit-btn').disabled = false;
-  document.querySelector('.submit-btn').textContent = '🐱 发布留言';
+  document.querySelector('.submit-btn').textContent = '🐱 匿名发布';
 }
 
 // ===== Like & Bookmark =====
