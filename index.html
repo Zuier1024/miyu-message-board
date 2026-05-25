@@ -1185,7 +1185,9 @@ function toggleLoginMode() {
 
 function resetLoginMode() {
   document.getElementById('loginPassword2').style.display = isRegisterMode ? 'block' : 'none';
-  document.getElementById('loginSubmitBtn').textContent = isRegisterMode ? '注 册' : '登 录';
+  document.getElementById('loginSubmitBtn').style.display = isRegisterMode ? 'none' : 'block';
+  document.getElementById('registerSubmitBtn').style.display = isRegisterMode ? 'block' : 'none';
+  document.getElementById('loginSubtitle').textContent = isRegisterMode ? '注册账号，跨设备查看留言' : '登录后可在不同设备查看你的留言';
   document.getElementById('switchLabel').textContent = isRegisterMode ? '已有账号？' : '还没有账号？';
   document.getElementById('switchLink').textContent = isRegisterMode ? '去登录' : '注册新账号';
   document.getElementById('loginError').textContent = '';
@@ -1196,50 +1198,54 @@ async function doLogin() {
   const password = document.getElementById('loginPassword').value;
   const errEl = document.getElementById('loginError');
 
-  if (isRegisterMode) {
-    const password2 = document.getElementById('loginPassword2').value;
-    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
-    if (username.length < 2) { errEl.textContent = '用户名至少2个字符'; return; }
-    if (password.length < 4) { errEl.textContent = '密码至少4位'; return; }
-    if (password !== password2) { errEl.textContent = '两次密码不一致'; return; }
+  if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+  try {
+    const res = await fetch(API_BASE + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || '登录失败'; return; }
+    authToken = data.token;
+    authUser = { userId: data.userId, username: data.username };
+    localStorage.setItem('miyu_token', authToken);
+    updateAuthUI();
+    closeLoginModal();
+    renderFeed();
+    showToast('登录成功！欢迎回来 ' + data.username + '~');
+  } catch { errEl.textContent = '网络错误，请重试'; }
+}
 
-    try {
-      const res = await fetch(API_BASE + '/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-        signal: AbortSignal.timeout(10000),
-      });
-      const data = await res.json();
-      if (!res.ok) { errEl.textContent = data.error || '注册失败'; return; }
-      authToken = data.token;
-      authUser = { userId: data.userId, username: data.username };
-      localStorage.setItem('miyu_token', authToken);
-      updateAuthUI();
-      closeLoginModal();
-      renderFeed();
-      showToast('注册成功！欢迎 ' + data.username + '~');
-    } catch { errEl.textContent = '网络错误，请重试'; }
-  } else {
-    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
-    try {
-      const res = await fetch(API_BASE + '/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-        signal: AbortSignal.timeout(10000),
-      });
-      const data = await res.json();
-      if (!res.ok) { errEl.textContent = data.error || '登录失败'; return; }
-      authToken = data.token;
-      authUser = { userId: data.userId, username: data.username };
-      localStorage.setItem('miyu_token', authToken);
-      updateAuthUI();
-      closeLoginModal();
-      renderFeed();
-      showToast('登录成功！欢迎回来 ' + data.username + '~');
-    } catch { errEl.textContent = '网络错误，请重试'; }
-  }
+async function doRegister() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const password2 = document.getElementById('loginPassword2').value;
+  const errEl = document.getElementById('loginError');
+
+  if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+  if (username.length < 2) { errEl.textContent = '用户名至少2个字符'; return; }
+  if (password.length < 4) { errEl.textContent = '密码至少4位'; return; }
+  if (password !== password2) { errEl.textContent = '两次密码不一致'; return; }
+
+  try {
+    const res = await fetch(API_BASE + '/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || '注册失败'; return; }
+    authToken = data.token;
+    authUser = { userId: data.userId, username: data.username };
+    localStorage.setItem('miyu_token', authToken);
+    updateAuthUI();
+    closeLoginModal();
+    renderFeed();
+    showToast('注册成功！欢迎 ' + data.username + '~');
+  } catch { errEl.textContent = '网络错误，请重试'; }
 }
 
 function doLogout() {
@@ -2020,12 +2026,13 @@ init();
 <div id="loginModal" class="login-modal" style="display:none;" onclick="if(event.target===this)closeLoginModal()">
   <div class="login-card">
     <h2>🐱 登录咪语</h2>
-    <p class="subtitle">登录后可在不同设备查看你的留言</p>
+    <p class="subtitle" id="loginSubtitle">登录后可在不同设备查看你的留言</p>
     <div class="error-msg" id="loginError"></div>
     <input id="loginUsername" type="text" placeholder="用户名" maxlength="20" autocomplete="username">
     <input id="loginPassword" type="password" placeholder="密码（至少4位）" maxlength="50" autocomplete="current-password">
     <input id="loginPassword2" type="password" placeholder="确认密码" maxlength="50" style="display:none;" autocomplete="off">
-    <button class="login-submit" id="loginSubmitBtn" onclick="doLogin()">登 录</button>
+    <button class="login-submit" id="loginSubmitBtn" onclick="doLogin()">确认登录</button>
+    <button class="login-submit" id="registerSubmitBtn" onclick="doRegister()" style="display:none;background:var(--pink-dark);">确认注册</button>
     <p class="switch-text">
       <span id="switchLabel">还没有账号？</span>
       <a id="switchLink" onclick="toggleLoginMode()">注册新账号</a>
