@@ -1149,10 +1149,10 @@ function updateAuthUI() {
   const btn = document.getElementById('authBtn');
   const userEl = document.getElementById('authUser');
   if (authUser) {
-    btn.textContent = '👤 ' + authUser.username;
+    btn.textContent = '✅ 已登录';
     btn.onclick = null;
     userEl.style.display = 'inline-flex';
-    userEl.innerHTML = '✅ ' + authUser.username + ' <button class="logout-btn" onclick="doLogout()">退出</button>';
+    userEl.innerHTML = '✅ 已登录 <button class="logout-btn" onclick="doLogout()">退出</button>';
   } else {
     btn.textContent = '🔑 登录';
     btn.onclick = showLoginModal;
@@ -1214,7 +1214,7 @@ async function doLogin() {
     updateAuthUI();
     closeLoginModal();
     renderFeed();
-    showToast('登录成功！欢迎回来 ' + data.username + '~');
+    showToast('登录成功！');
   } catch { errEl.textContent = '网络错误，请重试'; }
 }
 
@@ -1244,7 +1244,7 @@ async function doRegister() {
     updateAuthUI();
     closeLoginModal();
     renderFeed();
-    showToast('注册成功！欢迎 ' + data.username + '~');
+    showToast('注册成功！');
   } catch { errEl.textContent = '网络错误，请重试'; }
 }
 
