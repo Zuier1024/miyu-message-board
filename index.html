@@ -1113,8 +1113,23 @@ function getUserName() {
 const avatars = ['🐱','😺','😸','😻','😽','🐈','🐈‍⬛','🎀','🌸','🐾','🧶','🩷','🍡','🎂','🍰','🧁'];
 function randomAvatar() { return avatars[Math.floor(Math.random() * avatars.length)]; }
 function randomNickname() {
-  const names = ['小奶猫','棉花糖','樱花团子','草莓泡芙','蜜桃酱','奶油喵','布丁猫','糖霜爪','云朵喵','铃铛猫','糯米团','芝士猫','泡芙喵','奶盖茶','夹心喵','小布丁','草莓喵','桃花酥','小松饼','雪媚娘'];
-  return names[Math.floor(Math.random() * names.length)];
+  const adjectives = ['慵懒的','快乐的','安静的','调皮的','温柔的','害羞的','呆萌的','软绵绵','暖洋洋','慢悠悠','甜丝丝','呼噜噜','毛茸茸','胖嘟嘟','圆滚滚','懒洋洋'];
+  const nouns = ['星星','猫咪','云朵','布丁','团子','泡芙','樱花','月亮','奶茶','小熊','兔子','海豚','企鹅','薯饼','饼干','年糕','果冻','芝士','棉花糖','松饼','奶盖','小笼包','蛋挞','冰淇淋','巧克力','麻薯','甜甜圈','蜂蜜','薄荷糖','焦糖'];
+  const type = Math.floor(Math.random() * 4);
+  if (type === 0) {
+    // 形容词+名词: 慵懒的星星
+    return adjectives[Math.floor(Math.random() * adjectives.length)] + nouns[Math.floor(Math.random() * nouns.length)];
+  } else if (type === 1) {
+    // 名词+名词: 星星布丁
+    return nouns[Math.floor(Math.random() * nouns.length)] + nouns[Math.floor(Math.random() * nouns.length)];
+  } else if (type === 2) {
+    // 神秘访客+数字: 神秘访客729
+    return '神秘访客' + Math.floor(Math.random() * 900 + 100);
+  } else {
+    // 颜色+名词: 粉红泡芙
+    const colors = ['粉','白','奶','蜜','糖','桃','橘','蓝','紫','灰','棕','金','银','茶','薄荷'];
+    return colors[Math.floor(Math.random() * colors.length)] + '色' + nouns[Math.floor(Math.random() * nouns.length)];
+  }
 }
 
 // ===== Auth =====
